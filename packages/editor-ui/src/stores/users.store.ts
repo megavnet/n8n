@@ -46,7 +46,7 @@ import type { Scope } from '@n8n/permissions';
 import { inviteUsers, acceptInvitation } from '@/api/invitation';
 
 const isPendingUser = (user: IUserResponse | null) => !!user?.isPending;
-const isInstanceOwner = (user: IUserResponse | null) => user?.globalRole?.name === ROLE.Owner;
+const isInstanceOwner = (user: IUserResponse | null) => user?.role === 'owner';
 const isDefaultUser = (user: IUserResponse | null) => isInstanceOwner(user) && isPendingUser(user);
 
 export const useUsersStore = defineStore(STORES.USERS, {
@@ -79,7 +79,7 @@ export const useUsersStore = defineStore(STORES.USERS, {
 			return (userId: string): IUser | null => state.users[userId];
 		},
 		globalRoleName(): IRole {
-			return this.currentUser?.globalRole?.name ?? 'default';
+			return this.currentUser?.role ?? 'default';
 		},
 		personalizedNodeTypes(): string[] {
 			const user = this.currentUser;

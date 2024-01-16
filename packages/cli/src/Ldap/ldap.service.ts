@@ -7,8 +7,7 @@ import { ApplicationError, jsonParse } from 'n8n-workflow';
 import { Cipher } from 'n8n-core';
 
 import config from '@/config';
-import type { Role } from '@db/entities/Role';
-import type { User } from '@db/entities/User';
+import type { GlobalRole, User } from '@db/entities/User';
 import type { RunningMode, SyncStatus } from '@db/entities/AuthProviderSyncHistory';
 import { SettingsRepository } from '@db/repositories/settings.repository';
 import { InternalHooks } from '@/InternalHooks';
@@ -30,7 +29,6 @@ import {
 	escapeFilter,
 	formatUrl,
 	getLdapIds,
-	getLdapUserRole,
 	getLdapUsers,
 	getMappingAttributes,
 	mapLdapUserToDbUser,
@@ -346,12 +344,10 @@ export class LdapService {
 
 		const localAdUsers = await getLdapIds();
 
-		const role = await getLdapUserRole();
-
 		const { usersToCreate, usersToUpdate, usersToDisable } = this.getUsersToProcess(
 			adUsers,
 			localAdUsers,
-			role,
+			'member',
 		);
 
 		this.logger.debug('LDAP - Users processed', {
@@ -407,7 +403,7 @@ export class LdapService {
 	private getUsersToProcess(
 		adUsers: LdapUser[],
 		localAdUsers: string[],
-		role: Role,
+		role: GlobalRole,
 	): {
 		usersToCreate: Array<[string, User]>;
 		usersToUpdate: Array<[string, User]>;
@@ -424,7 +420,7 @@ export class LdapService {
 	private getUsersToCreate(
 		remoteAdUsers: LdapUser[],
 		localLdapIds: string[],
-		role: Role,
+		role: GlobalRole,
 	): Array<[string, User]> {
 		return remoteAdUsers
 			.filter((adUser) => !localLdapIds.includes(adUser[this.config.ldapIdAttribute] as string))
