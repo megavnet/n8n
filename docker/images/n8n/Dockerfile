@@ -12,7 +12,7 @@ RUN set -eux; \
 	case "$apkArch" in \
 	'armv7') apk --no-cache add --virtual build-dependencies python3 build-base;; \
 	esac && \
-	npm install -g --omit=dev n8n@${N8N_VERSION} && \
+	npm install -g --omit=dev @megavnet/n8n@${N8N_VERSION} && \
 	case "$apkArch" in \
 	'armv7') apk del build-dependencies;; \
 	esac && \
