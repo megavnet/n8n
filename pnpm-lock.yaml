@@ -374,8 +374,8 @@ importers:
         specifier: workspace:*
         version: link:../@n8n/permissions
       '@n8n_io/license-sdk':
-        specifier: 2.7.2
-        version: 2.7.2
+        specifier: npm:@megavnet/license-sdk@2.7.2
+        version: /@megavnet/license-sdk@2.7.2
       '@oclif/command':
         specifier: 1.8.18
         version: 1.8.18(@oclif/config@1.18.17)(supports-color@8.1.1)
@@ -6021,6 +6021,16 @@ packages:
       react: 18.2.0
     dev: true
 
+  /@megavnet/license-sdk@2.7.2:
+    resolution: {integrity: sha512-jLjWWO7KIKxthPmx+YDKKy5c3MmkyQ01TO4DMoPusSRlQCU5nj7lwbs0twyyohWh0jbhAH0ZJuEDgo9PBr7v5A==}
+    engines: {node: '>=18.12.1', npm: '>=8.19.2'}
+    dependencies:
+      crypto-js: 4.2.0
+      node-machine-id: 1.1.12
+      node-rsa: 1.1.1
+      undici: 5.26.4
+    dev: false
+
   /@microsoft/api-extractor-model@7.28.2:
     resolution: {integrity: sha512-vkojrM2fo3q4n4oPh4uUZdjJ2DxQ2+RnDQL/xhTWSRUNPF6P4QyrvY357HBxbnltKcYu+nNNolVqc6TIGQ73Ig==}
     dependencies:
@@ -6169,16 +6179,6 @@ packages:
     dependencies:
       acorn: 8.11.2
       acorn-walk: 8.2.0
-    dev: false
-
-  /@n8n_io/license-sdk@2.7.2:
-    resolution: {integrity: sha512-GalBo+2YxbFUR1I7cx3JDEiippqKw8ml3FdFK9hRRB9NfpP+H0QYnWf/sGOmKcb4nZ2lqU38nU7ZdIF96jBkXg==}
-    engines: {node: '>=18.12.1', npm: '>=8.19.2'}
-    dependencies:
-      crypto-js: 4.2.0
-      node-machine-id: 1.1.12
-      node-rsa: 1.1.1
-      undici: 5.26.4
     dev: false
 
   /@n8n_io/riot-tmpl@4.0.0:
