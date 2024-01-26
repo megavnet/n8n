@@ -1,10 +1,7 @@
-FROM node:18.10
+FROM node:18-alpine
 
 # TODO: install build-essential python
-RUN apt-get update && apt-get install -y \
-		build-essential \
-		python \
-		&& rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache --virtual .build-deps alpine-sdk python3
 
 RUN npm install -g pnpm
 
