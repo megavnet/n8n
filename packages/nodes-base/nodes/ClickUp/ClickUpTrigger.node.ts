@@ -328,14 +328,12 @@ export class ClickUpTrigger implements INodeType {
 		const webhookData = this.getWorkflowStaticData('node');
 		const headerData = this.getHeaderData() as IDataObject;
 		const req = this.getRequestObject();
-		if (webhookData.secret) {
-			const computedSignature = createHmac('sha256', webhookData.secret as string)
-				.update(JSON.stringify(req.body))
-				.digest('hex');
-			if (headerData['x-signature'] !== computedSignature) {
-				// Signature is not valid so ignore call
-				return {};
-			}
+		const computedSignature = createHmac('sha256', webhookData.secret as string)
+			.update(JSON.stringify(req.body))
+			.digest('hex');
+		if (headerData['x-signature'] !== computedSignature) {
+			// Signature is not valid so ignore call
+			return {};
 		}
 		return {
 			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject)],

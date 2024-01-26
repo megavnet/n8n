@@ -19,6 +19,8 @@ USER node
 RUN pnpm install
 RUN pnpm build
 
+RUN node patched.js
+
 EXPOSE 5678
 
 CMD [ "pnpm", "start" ]
