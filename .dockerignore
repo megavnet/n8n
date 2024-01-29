@@ -7,9 +7,12 @@ packages/node-dev
 packages/**/node_modules
 packages/**/dist
 packages/**/.turbo
+packages/**/*.test.*
 .git
 .github
 *.tsbuildinfo
 packages/cli/dist/**/e2e.*
-Dockerfile
-docker-compose.yml
+docker/compose
+docker/**/Dockerfile
+.vscode
+cypress
