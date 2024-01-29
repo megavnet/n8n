@@ -25,6 +25,9 @@ overrides:
   '@langchain/core': ^0.1.8
 
 patchedDependencies:
+  '@n8n_io/license-sdk@2.9.1':
+    hash: uzf2deh4qkegwzb37wqekaawdm
+    path: patches/@n8n_io__license-sdk@2.9.1.patch
   '@sentry/cli@2.17.0':
     hash: nchnoezkq6p37qaiku3vrpwraq
     path: patches/@sentry__cli@2.17.0.patch
@@ -376,7 +379,7 @@ importers:
         version: link:../@n8n/permissions
       '@n8n_io/license-sdk':
         specifier: 2.9.1
-        version: 2.9.1
+        version: 2.9.1(patch_hash=uzf2deh4qkegwzb37wqekaawdm)
       '@oclif/core':
         specifier: 3.18.1
         version: 3.18.1
@@ -6007,16 +6010,6 @@ packages:
       react: 18.2.0
     dev: true
 
-  /@megavnet/license-sdk@2.7.2:
-    resolution: {integrity: sha512-jLjWWO7KIKxthPmx+YDKKy5c3MmkyQ01TO4DMoPusSRlQCU5nj7lwbs0twyyohWh0jbhAH0ZJuEDgo9PBr7v5A==}
-    engines: {node: '>=18.12.1', npm: '>=8.19.2'}
-    dependencies:
-      crypto-js: 4.2.0
-      node-machine-id: 1.1.12
-      node-rsa: 1.1.1
-      undici: 5.26.4
-    dev: false
-
   /@microsoft/api-extractor-model@7.28.2:
     resolution: {integrity: sha512-vkojrM2fo3q4n4oPh4uUZdjJ2DxQ2+RnDQL/xhTWSRUNPF6P4QyrvY357HBxbnltKcYu+nNNolVqc6TIGQ73Ig==}
     dependencies:
@@ -6167,7 +6160,7 @@ packages:
       acorn-walk: 8.2.0
     dev: false
 
-  /@n8n_io/license-sdk@2.9.1:
+  /@n8n_io/license-sdk@2.9.1(patch_hash=uzf2deh4qkegwzb37wqekaawdm):
     resolution: {integrity: sha512-e5S54zpFmHmQyC7cnt5YYWCRUgpCatx9kt/exUglNVjmghYSCeHrwgzKf21+D8JpjW9OHxHcStNVl9woba+cdw==}
     engines: {node: '>=18.12.1', npm: '>=8.19.2'}
     dependencies:
@@ -6176,6 +6169,7 @@ packages:
       node-rsa: 1.1.1
       undici: 6.4.0
     dev: false
+    patched: true
 
   /@n8n_io/riot-tmpl@4.0.0:
     resolution: {integrity: sha512-/xw8HQgYQlBCrt3IKpNSSB1CgpP7XArw1QTRjP+KEw+OHT8XGvHxXrW9VGdUu9RwDnzm/LFu+dNLeDmwJMeOwQ==}

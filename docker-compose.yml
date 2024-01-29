@@ -1,7 +1,7 @@
 version: '3'
 services:
   n8n:
-    image: registry.megavn.net/n8nio/n8n:dev
+    image: registry.megavn.net/n8nio/n8n:custom
     build: .
     ports:
       - '5678:5678'

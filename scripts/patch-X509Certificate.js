@@ -1,18 +1,20 @@
 const fs = require('fs');
 const glob = require('glob');
 
-(async () => {
-  var files = await glob('**/license-sdk/dist/LicenseManager.js', {}, function(
-    er,
-    files
-  ) {
-    files.forEach(replaceAll);
-  });
-})();
+// process.chdir(__dirname + '/..');
+
+const files = [
+  'node_modules/@n8n_io/license-sdk/dist/LicenseManager.js',
+  'node_modules/@n8n_io/license-sdk/dist/LicenseManager.mjs'
+];
+
+files.forEach(replaceAll);
 
 function replaceAll(filePath) {
-  // node_modules/.pnpm/@n8n_io+license-sdk@2.9.1/node_modules/@n8n_io/license-sdk/dist/LicenseManager.js
+  // /usr/local/lib/node_modules/n8n/node_modules/@n8n_io/license-sdk/dist/LicenseManager.mjs
+  // /usr/local/lib/node_modules/n8n/node_modules/@n8n_io/license-sdk/dist/LicenseManager.js
   if (fs.existsSync(filePath)) {
+    console.log(`Patching ${filePath}`);
     const fileContent = fs.readFileSync(filePath, 'utf8');
     const newFileContent = fileContent.replace(
       /X509Certificate\(`([^`]+)`\)/g,
@@ -39,7 +41,6 @@ IX2qTAQjMVepCxxsnSc+Q6GTHgRdoAkMmRvnHwCQ4VN3cel5dGqOrdElujQPFw99
 nZkk8rHkp+hKMasMibTOL3JD/As0KBLlDbDlO3MpQUype3mBxQCiEHY=
 -----END CERTIFICATE-----\`\)`
     );
-
     fs.writeFileSync(filePath, newFileContent);
   } else {
     console.log(`File ${filePath} does not exist`);

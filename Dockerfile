@@ -1,36 +1,44 @@
-FROM node:18-alpine AS builder
+ARG NODE_VERSION=18
 
-# TODO: install build-essential python
-RUN apk add --no-cache --virtual .build-deps alpine-sdk python3
+# 1. Create an image to build n8n
+FROM --platform=linux/amd64 n8nio/base:${NODE_VERSION} as builder
 
-RUN npm install -g pnpm
-
-RUN wget -O - https://gobinaries.com/tj/node-prune | sh
-
-RUN mkdir /app && chown node:node /app
-WORKDIR /app
-RUN mkdir -p /home/node/.n8n && chown node:node /home/node/.n8n
-COPY . /app
-
-RUN pnpm install
+# Build the application from source
+WORKDIR /src
+COPY . /src
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store --mount=type=cache,id=pnpm-metadata,target=/root/.cache/pnpm/metadata pnpm install --frozen-lockfile
 RUN pnpm build
-RUN node patched.js
 
-RUN find /app/packages -type f -name "*.ts" -o -name "*.js.map" -o -name "*.vue" | xargs rm -f
-RUN node-prune
+# Delete all dev dependencies
+RUN jq 'del(.pnpm.patchedDependencies)' package.json > package.json.tmp; mv package.json.tmp package.json
+RUN node scripts/trim-fe-packageJson.js
 
-###########################################################
+# Delete any source code, source-mapping, or typings
+RUN find . -type f -name "*.ts" -o -name "*.js.map" -o -name "*.vue" -o -name "tsconfig.json" -o -name "*.tsbuildinfo" | xargs rm -rf
 
-FROM node:18-alpine
+# Deploy the `n8n` package into /compiled
+RUN mkdir /compiled
+RUN NODE_ENV=production pnpm --filter=n8n --prod --no-optional deploy /compiled
 
-RUN mkdir /app && chown node:node /app
+# 2. Start with a new clean image with just the code that is needed to run n8n
+FROM n8nio/base:${NODE_VERSION}
+ENV NODE_ENV=production
 
-WORKDIR /app
-RUN mkdir -p /home/node/.n8n && chown node:node /home/node/.n8n
-COPY --chown=node:node --from=builder /app /app
+ARG N8N_RELEASE_TYPE=dev
+ENV N8N_RELEASE_TYPE=${N8N_RELEASE_TYPE}
+
+WORKDIR /home/node
+COPY --from=builder /compiled /usr/local/lib/node_modules/n8n
+COPY docker/images/n8n/docker-entrypoint.sh /
+
+RUN \
+	pnpm rebuild --dir /usr/local/lib/node_modules/n8n sqlite3 && \
+	ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n && \
+	mkdir .n8n && \
+	chown node:node .n8n
+
+COPY scripts/patch-X509Certificate.js /usr/local/lib/node_modules/n8n/scripts/
+RUN cd /usr/local/lib/node_modules/n8n/ && node scripts/patch-X509Certificate.js
 
 USER node
-
-EXPOSE 5678
-
-CMD ["npm", "start"]
+ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
