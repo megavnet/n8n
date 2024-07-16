@@ -5,12 +5,12 @@ import type {
 	FilterOptionsValue,
 	FilterValue,
 	INodeProperties,
+	Result,
 	ValidationResult,
 } from '../Interfaces';
 import { validateFieldType } from '../TypeValidation';
 import * as LoggerProxy from '../LoggerProxy';
-
-type Result<T, E> = { ok: true; result: T } | { ok: false; error: E };
+import { ApplicationError } from '../errors/application.error';
 
 type FilterConditionMetadata = {
 	index: number;
@@ -19,7 +19,7 @@ type FilterConditionMetadata = {
 	errorFormat: 'full' | 'inline';
 };
 
-export class FilterError extends Error {
+export class FilterError extends ApplicationError {
 	constructor(
 		message: string,
 		readonly description: string,
@@ -33,10 +33,25 @@ function parseSingleFilterValue(
 	type: FilterOperatorType,
 	strict = false,
 ): ValidationResult {
-	return type === 'any' || value === null || value === undefined || value === ''
-		? ({ valid: true, newValue: value } as ValidationResult)
-		: validateFieldType('filter', value, type, { strict, parseStrings: true });
+	if (type === 'any' || value === null || value === undefined) {
+		return { valid: true, newValue: value } as ValidationResult;
+	}
+
+	if (type === 'boolean' && !strict) {
+		return { valid: true, newValue: Boolean(value) };
+	}
+
+	if (type === 'number' && Number.isNaN(value)) {
+		return { valid: true, newValue: value };
+	}
+
+	return validateFieldType('filter', value, type, { strict, parseStrings: true });
 }
+
+const withIndefiniteArticle = (noun: string): string => {
+	const article = 'aeiou'.includes(noun.charAt(0)) ? 'an' : 'a';
+	return `${article} ${noun}`;
+};
 
 function parseFilterConditionValues(
 	condition: FilterConditionValue,
@@ -64,50 +79,29 @@ function parseFilterConditionValues(
 			condition.rightValue.startsWith('='));
 	const leftValueString = String(condition.leftValue);
 	const rightValueString = String(condition.rightValue);
-	const errorDescription = 'Try to change the operator, or change the type with an expression';
-	const inCondition = errorFormat === 'full' ? ` in condition ${index + 1} ` : ' ';
-	const itemSuffix = `[item ${itemIndex}]`;
+	const suffix =
+		errorFormat === 'full' ? `[condition ${index}, item ${itemIndex}]` : `[item ${itemIndex}]`;
 
-	if (!leftValid && !rightValid) {
-		const providedValues = 'The provided values';
-		let types = `'${operator.type}'`;
-		if (rightType !== operator.type) {
-			types = `'${operator.type}' and '${rightType}' respectively`;
-		}
+	const composeInvalidTypeMessage = (type: string, fromType: string, value: string) => {
+		fromType = fromType.toLocaleLowerCase();
 		if (strict) {
-			return {
-				ok: false,
-				error: new FilterError(
-					`${providedValues} '${leftValueString}' and '${rightValueString}'${inCondition}are not of the expected type ${types} ${itemSuffix}`,
-					errorDescription,
-				),
-			};
+			return `Wrong type: '${value}' is ${withIndefiniteArticle(
+				fromType,
+			)} but was expecting ${withIndefiniteArticle(type)} ${suffix}`;
 		}
-
-		return {
-			ok: false,
-			error: new FilterError(
-				`${providedValues} '${leftValueString}' and '${rightValueString}'${inCondition}cannot be converted to the expected type ${types} ${itemSuffix}`,
-				errorDescription,
-			),
-		};
-	}
-
-	const composeInvalidTypeMessage = (field: 'left' | 'right', type: string, value: string) => {
-		const fieldNumber = field === 'left' ? 1 : 2;
-
-		if (strict) {
-			return `The provided value ${fieldNumber} '${value}'${inCondition}is not of the expected type '${type}' ${itemSuffix}`;
-		}
-		return `The provided value ${fieldNumber} '${value}'${inCondition}cannot be converted to the expected type '${type}' ${itemSuffix}`;
+		return `Conversion error: the ${fromType} '${value}' can't be converted to ${withIndefiniteArticle(
+			type,
+		)} ${suffix}`;
 	};
+
+	const invalidTypeDescription = 'Try changing the type of comparison.';
 
 	if (!leftValid) {
 		return {
 			ok: false,
 			error: new FilterError(
-				composeInvalidTypeMessage('left', operator.type, leftValueString),
-				errorDescription,
+				composeInvalidTypeMessage(operator.type, typeof condition.leftValue, leftValueString),
+				invalidTypeDescription,
 			),
 		};
 	}
@@ -116,13 +110,19 @@ function parseFilterConditionValues(
 		return {
 			ok: false,
 			error: new FilterError(
-				composeInvalidTypeMessage('right', rightType, rightValueString),
-				errorDescription,
+				composeInvalidTypeMessage(rightType, typeof condition.rightValue, rightValueString),
+				invalidTypeDescription,
 			),
 		};
 	}
 
-	return { ok: true, result: { left: parsedLeftValue.newValue, right: parsedRightValue.newValue } };
+	return {
+		ok: true,
+		result: {
+			left: parsedLeftValue.valid ? parsedLeftValue.newValue : undefined,
+			right: parsedRightValue.valid ? parsedRightValue.newValue : undefined,
+		},
+	};
 }
 
 function parseRegexPattern(pattern: string): RegExp {
@@ -138,6 +138,19 @@ function parseRegexPattern(pattern: string): RegExp {
 	return regex;
 }
 
+export function arrayContainsValue(array: unknown[], value: unknown, ignoreCase: boolean): boolean {
+	if (ignoreCase && typeof value === 'string') {
+		return array.some((item) => {
+			if (typeof item !== 'string') {
+				return false;
+			}
+			return item.toString().toLocaleLowerCase() === value.toLocaleLowerCase();
+		});
+	}
+	return array.includes(value);
+}
+
+// eslint-disable-next-line complexity
 export function executeFilterCondition(
 	condition: FilterConditionValue,
 	filterOptions: FilterOptionsValue,
@@ -153,7 +166,7 @@ export function executeFilterCondition(
 
 	let { left: leftValue, right: rightValue } = parsedValues.result;
 
-	const exists = leftValue !== undefined && leftValue !== null;
+	const exists = leftValue !== undefined && leftValue !== null && !Number.isNaN(leftValue);
 	if (condition.operator.operation === 'exists') {
 		return exists;
 	} else if (condition.operator.operation === 'notExists') {
@@ -212,6 +225,10 @@ export function executeFilterCondition(
 			const right = rightValue as number;
 
 			switch (condition.operator.operation) {
+				case 'empty':
+					return !exists;
+				case 'notEmpty':
+					return exists;
 				case 'equals':
 					return left === right;
 				case 'notEquals':
@@ -229,6 +246,12 @@ export function executeFilterCondition(
 		case 'dateTime': {
 			const left = leftValue as DateTime;
 			const right = rightValue as DateTime;
+
+			if (condition.operator.operation === 'empty') {
+				return !exists;
+			} else if (condition.operator.operation === 'notEmpty') {
+				return exists;
+			}
 
 			if (!left || !right) {
 				return false;
@@ -254,6 +277,10 @@ export function executeFilterCondition(
 			const right = rightValue as boolean;
 
 			switch (condition.operator.operation) {
+				case 'empty':
+					return !exists;
+				case 'notEmpty':
+					return exists;
 				case 'true':
 					return left;
 				case 'false':
@@ -270,15 +297,9 @@ export function executeFilterCondition(
 
 			switch (condition.operator.operation) {
 				case 'contains':
-					if (ignoreCase && typeof rightValue === 'string') {
-						rightValue = rightValue.toLocaleLowerCase();
-					}
-					return left.includes(rightValue);
+					return arrayContainsValue(left, rightValue, ignoreCase);
 				case 'notContains':
-					if (ignoreCase && typeof rightValue === 'string') {
-						rightValue = rightValue.toLocaleLowerCase();
-					}
-					return !left.includes(rightValue);
+					return !arrayContainsValue(left, rightValue, ignoreCase);
 				case 'lengthEquals':
 					return left.length === rightNumber;
 				case 'lengthNotEquals':
@@ -302,7 +323,7 @@ export function executeFilterCondition(
 
 			switch (condition.operator.operation) {
 				case 'empty':
-					return !!left && Object.keys(left).length === 0;
+					return !left || Object.keys(left).length === 0;
 				case 'notEmpty':
 					return !!left && Object.keys(left).length !== 0;
 			}

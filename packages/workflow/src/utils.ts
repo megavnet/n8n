@@ -1,5 +1,8 @@
 import FormData from 'form-data';
-import type { BinaryFileType, JsonObject } from './Interfaces';
+import { merge } from 'lodash';
+
+import { ALPHABET } from './Constants';
+import type { BinaryFileType, IDisplayOptions, INodeProperties, JsonObject } from './Interfaces';
 import { ApplicationError } from './errors/application.error';
 
 const readStreamClasses = new Set(['ReadStream', 'Readable', 'ReadableStream']);
@@ -165,3 +168,48 @@ export const removeCircularRefs = (obj: JsonObject, seen = new Set()) => {
 		}
 	});
 };
+
+export function updateDisplayOptions(
+	displayOptions: IDisplayOptions,
+	properties: INodeProperties[],
+) {
+	return properties.map((nodeProperty) => {
+		return {
+			...nodeProperty,
+			displayOptions: merge({}, nodeProperty.displayOptions, displayOptions),
+		};
+	});
+}
+
+export function randomInt(max: number): number;
+export function randomInt(min: number, max: number): number;
+/**
+ * Generates a random integer within a specified range.
+ *
+ * @param {number} min - The lower bound of the range. If `max` is not provided, this value is used as the upper bound and the lower bound is set to 0.
+ * @param {number} [max] - The upper bound of the range, not inclusive.
+ * @returns {number} A random integer within the specified range.
+ */
+export function randomInt(min: number, max?: number): number {
+	if (max === undefined) {
+		max = min;
+		min = 0;
+	}
+	return min + (crypto.getRandomValues(new Uint32Array(1))[0] % (max - min));
+}
+
+export function randomString(length: number): string;
+export function randomString(minLength: number, maxLength: number): string;
+/**
+ * Generates a random alphanumeric string of a specified length, or within a range of lengths.
+ *
+ * @param {number} minLength - If `maxLength` is not provided, this is the length of the string to generate. Otherwise, this is the lower bound of the range of possible lengths.
+ * @param {number} [maxLength] - The upper bound of the range of possible lengths. If provided, the actual length of the string will be a random number between `minLength` and `maxLength`, inclusive.
+ * @returns {string} A random alphanumeric string of the specified length or within the specified range of lengths.
+ */
+export function randomString(minLength: number, maxLength?: number): string {
+	const length = maxLength === undefined ? minLength : randomInt(minLength, maxLength + 1);
+	return [...crypto.getRandomValues(new Uint32Array(length))]
+		.map((byte) => ALPHABET[byte % ALPHABET.length])
+		.join('');
+}

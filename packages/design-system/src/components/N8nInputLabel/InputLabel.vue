@@ -22,7 +22,7 @@
 				v-if="tooltipText && label"
 				:class="[$style.infoIcon, showTooltip ? $style.visible : $style.hidden]"
 			>
-				<N8nTooltip placement="top" :popper-class="$style.tooltipPopper">
+				<N8nTooltip placement="top" :popper-class="$style.tooltipPopper" :show-after="300">
 					<N8nIcon icon="question-circle" size="small" />
 					<template #content>
 						<div v-html="addTargetBlank(tooltipText)" />
@@ -45,65 +45,37 @@
 	</div>
 </template>
 
-<script lang="ts">
+<script lang="ts" setup>
 import N8nText from '../N8nText';
-import N8nTooltip from '../N8nTooltip';
 import N8nIcon from '../N8nIcon';
+import N8nTooltip from '../N8nTooltip';
+import type { TextColor } from 'n8n-design-system/types/text';
 
-import { addTargetBlank } from '../utils/helpers';
+const SIZE = ['small', 'medium'] as const;
 
-import { defineComponent } from 'vue';
+interface InputLabelProps {
+	compact?: boolean;
+	color?: TextColor;
+	label?: string;
+	tooltipText?: string;
+	inputName?: string;
+	required?: boolean;
+	bold?: boolean;
+	size?: (typeof SIZE)[number];
+	underline?: boolean;
+	showTooltip?: boolean;
+	showOptions?: boolean;
+}
 
-export default defineComponent({
-	name: 'N8nInputLabel',
-	components: {
-		N8nText,
-		N8nIcon,
-		N8nTooltip,
-	},
-	props: {
-		compact: {
-			type: Boolean,
-			default: false,
-		},
-		color: {
-			type: String,
-		},
-		label: {
-			type: String,
-		},
-		tooltipText: {
-			type: String,
-		},
-		inputName: {
-			type: String,
-		},
-		required: {
-			type: Boolean,
-		},
-		bold: {
-			type: Boolean,
-			default: true,
-		},
-		size: {
-			type: String,
-			default: 'medium',
-			validator: (value: string): boolean => ['small', 'medium'].includes(value),
-		},
-		underline: {
-			type: Boolean,
-		},
-		showTooltip: {
-			type: Boolean,
-		},
-		showOptions: {
-			type: Boolean,
-		},
-	},
-	methods: {
-		addTargetBlank,
-	},
+defineOptions({ name: 'N8nInputLabel' });
+withDefaults(defineProps<InputLabelProps>(), {
+	compact: false,
+	bold: true,
+	size: 'medium',
 });
+
+const addTargetBlank = (html: string) =>
+	html && html.includes('href=') ? html.replace(/href=/g, 'target="_blank" href=') : html;
 </script>
 
 <style lang="scss" module>
@@ -118,6 +90,10 @@ export default defineComponent({
 .inputLabel:hover {
 	.infoIcon {
 		opacity: 1;
+
+		&:hover {
+			color: var(--color-text-base);
+		}
 	}
 
 	.options {
@@ -145,14 +121,12 @@ export default defineComponent({
 	display: flex;
 	align-items: center;
 	color: var(--color-text-light);
-	padding-left: var(--spacing-4xs);
-	background-color: var(--color-background-xlight);
+	margin-left: var(--spacing-4xs);
 	z-index: 1;
 }
 
 .options {
 	opacity: 0;
-	background-color: var(--color-background-xlight);
 	transition: opacity 250ms cubic-bezier(0.98, -0.06, 0.49, -0.2); // transition on hover out
 
 	> * {

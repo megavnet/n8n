@@ -8,8 +8,7 @@ import { i18n as locale } from '@/plugins/i18n';
 import { useUIStore } from '@/stores/ui.store';
 import { N8N_PRICING_PAGE_URL } from '@/constants';
 import { useToast } from '@/composables/useToast';
-import { ROLE } from '@/utils/userUtils';
-import { hasPermission } from '@/rbac/permissions';
+import { hasPermission } from '@/utils/rbac/permissions';
 
 const usageStore = useUsageStore();
 const route = useRoute();
@@ -29,9 +28,7 @@ const activationKey = ref('');
 const activationKeyInput = ref<HTMLInputElement | null>(null);
 
 const canUserActivateLicense = computed(() =>
-	hasPermission(['role'], {
-		role: [ROLE.Owner],
-	}),
+	hasPermission(['rbac'], { rbac: { scope: 'license:manage' } }),
 );
 
 const showActivationSuccess = () => {

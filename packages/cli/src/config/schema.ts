@@ -21,197 +21,6 @@ convict.addFormat({
 });
 
 export const schema = {
-	database: {
-		type: {
-			doc: 'Type of database to use',
-			format: ['sqlite', 'mariadb', 'mysqldb', 'postgresdb'] as const,
-			default: 'sqlite',
-			env: 'DB_TYPE',
-		},
-		tablePrefix: {
-			doc: 'Prefix for table names',
-			format: '*',
-			default: '',
-			env: 'DB_TABLE_PREFIX',
-		},
-		logging: {
-			enabled: {
-				doc: 'Typeorm logging enabled flag.',
-				format: Boolean,
-				default: false,
-				env: 'DB_LOGGING_ENABLED',
-			},
-			options: {
-				doc: 'Logging level options, default is "error". Possible values: query,error,schema,warn,info,log. To enable all logging, specify "all"',
-				format: String,
-				default: 'error',
-				env: 'DB_LOGGING_OPTIONS',
-			},
-			maxQueryExecutionTime: {
-				doc: 'Maximum number of milliseconds query should be executed before logger logs a warning. Set 0 to disable long running query warning',
-				format: Number,
-				default: 0, // 0 disables the slow-query log
-				env: 'DB_LOGGING_MAX_EXECUTION_TIME',
-			},
-		},
-		postgresdb: {
-			database: {
-				doc: 'PostgresDB Database',
-				format: String,
-				default: 'n8n',
-				env: 'DB_POSTGRESDB_DATABASE',
-			},
-			host: {
-				doc: 'PostgresDB Host',
-				format: String,
-				default: 'localhost',
-				env: 'DB_POSTGRESDB_HOST',
-			},
-			password: {
-				doc: 'PostgresDB Password',
-				format: String,
-				default: '',
-				env: 'DB_POSTGRESDB_PASSWORD',
-			},
-			port: {
-				doc: 'PostgresDB Port',
-				format: Number,
-				default: 5432,
-				env: 'DB_POSTGRESDB_PORT',
-			},
-			user: {
-				doc: 'PostgresDB User',
-				format: String,
-				default: 'root',
-				env: 'DB_POSTGRESDB_USER',
-			},
-			schema: {
-				doc: 'PostgresDB Schema',
-				format: String,
-				default: 'public',
-				env: 'DB_POSTGRESDB_SCHEMA',
-			},
-			poolSize: {
-				doc: 'PostgresDB Pool Size',
-				format: Number,
-				default: 2,
-				env: 'DB_POSTGRESDB_POOL_SIZE',
-			},
-
-			ssl: {
-				enabled: {
-					doc: 'If SSL should be enabled. If `ca`, `cert`, or `key` are defined, this will automatically default to true',
-					format: Boolean,
-					default: false,
-					env: 'DB_POSTGRESDB_SSL_ENABLED',
-				},
-				ca: {
-					doc: 'SSL certificate authority',
-					format: String,
-					default: '',
-					env: 'DB_POSTGRESDB_SSL_CA',
-				},
-				cert: {
-					doc: 'SSL certificate',
-					format: String,
-					default: '',
-					env: 'DB_POSTGRESDB_SSL_CERT',
-				},
-				key: {
-					doc: 'SSL key',
-					format: String,
-					default: '',
-					env: 'DB_POSTGRESDB_SSL_KEY',
-				},
-				rejectUnauthorized: {
-					doc: 'If unauthorized SSL connections should be rejected',
-					format: Boolean,
-					default: true,
-					env: 'DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED',
-				},
-			},
-		},
-		mysqldb: {
-			database: {
-				doc: '[DEPRECATED] MySQL Database',
-				format: String,
-				default: 'n8n',
-				env: 'DB_MYSQLDB_DATABASE',
-			},
-			host: {
-				doc: 'MySQL Host',
-				format: String,
-				default: 'localhost',
-				env: 'DB_MYSQLDB_HOST',
-			},
-			password: {
-				doc: 'MySQL Password',
-				format: String,
-				default: '',
-				env: 'DB_MYSQLDB_PASSWORD',
-			},
-			port: {
-				doc: 'MySQL Port',
-				format: Number,
-				default: 3306,
-				env: 'DB_MYSQLDB_PORT',
-			},
-			user: {
-				doc: 'MySQL User',
-				format: String,
-				default: 'root',
-				env: 'DB_MYSQLDB_USER',
-			},
-		},
-		sqlite: {
-			database: {
-				doc: 'SQLite Database file name',
-				format: String,
-				default: 'database.sqlite',
-				env: 'DB_SQLITE_DATABASE',
-			},
-			enableWAL: {
-				doc: 'Enable SQLite WAL mode',
-				format: Boolean,
-				default: false,
-				env: 'DB_SQLITE_ENABLE_WAL',
-			},
-			executeVacuumOnStartup: {
-				doc: 'Runs VACUUM operation on startup to rebuild the database. Reduces filesize and optimizes indexes. WARNING: This is a long running blocking operation. Will increase start-up time.',
-				format: Boolean,
-				default: false,
-				env: 'DB_SQLITE_VACUUM_ON_STARTUP',
-			},
-		},
-	},
-
-	credentials: {
-		overwrite: {
-			data: {
-				// Allows to set default values for credentials which
-				// get automatically prefilled and the user does not get
-				// displayed and can not change.
-				// Format: { CREDENTIAL_NAME: { PARAMETER: VALUE }}
-				doc: 'Overwrites for credentials',
-				format: '*',
-				default: '{}',
-				env: 'CREDENTIALS_OVERWRITE_DATA',
-			},
-			endpoint: {
-				doc: 'Fetch credentials from API',
-				format: String,
-				default: '',
-				env: 'CREDENTIALS_OVERWRITE_ENDPOINT',
-			},
-		},
-		defaultName: {
-			doc: 'Default name for credentials',
-			format: String,
-			default: 'My credentials',
-			env: 'CREDENTIALS_DEFAULT_NAME',
-		},
-	},
-
 	workflows: {
 		defaultName: {
 			doc: 'Default name for workflow',
@@ -234,20 +43,27 @@ export const schema = {
 	},
 
 	executions: {
-		// By default workflows get always executed in the main process.
-		// TODO: remove this and all usage of `executions.process` when `own` mode is deleted
+		// TODO: remove this and all usage of `executions.process` when we're sure that nobody has this in their config file anymore.
 		process: {
-			doc: 'In what process workflows should be executed.',
-			format: ['main', 'own'] as const,
-			default: 'main',
+			doc: 'Deprecated key, that will be removed in the future. Please remove it from your configuration and environment variables to prevent issues in the future.',
+			format: String,
+			default: '',
 			env: 'EXECUTIONS_PROCESS',
 		},
-
 		mode: {
 			doc: 'If it should run executions directly or via queue',
 			format: ['regular', 'queue'] as const,
 			default: 'regular',
 			env: 'EXECUTIONS_MODE',
+		},
+
+		concurrency: {
+			productionLimit: {
+				doc: "Max production executions allowed to run concurrently, in main process for regular mode and in worker for queue mode. Default for main mode is `-1` (disabled). Default for queue mode is taken from the worker's `--concurrency` flag.",
+				format: Number,
+				default: -1,
+				env: 'N8N_CONCURRENCY_PRODUCTION_LIMIT',
+			},
 		},
 
 		// A Workflow times out and gets canceled after this time (seconds).
@@ -358,6 +174,21 @@ export const schema = {
 			default: 10000,
 			env: 'EXECUTIONS_DATA_PRUNE_MAX_COUNT',
 		},
+
+		queueRecovery: {
+			interval: {
+				doc: 'How often (minutes) to check for queue recovery',
+				format: Number,
+				default: 180,
+				env: 'N8N_EXECUTIONS_QUEUE_RECOVERY_INTERVAL',
+			},
+			batchSize: {
+				doc: 'Size of batch of executions to check for queue recovery',
+				format: Number,
+				default: 100,
+				env: 'N8N_EXECUTIONS_QUEUE_RECOVERY_BATCH',
+			},
+		},
 	},
 
 	queue: {
@@ -408,7 +239,7 @@ export const schema = {
 					env: 'QUEUE_BULL_REDIS_PORT',
 				},
 				timeoutThreshold: {
-					doc: 'Redis timeout threshold',
+					doc: 'Max cumulative timeout (in milliseconds) of connection retries before process exit',
 					format: Number,
 					default: 10000,
 					env: 'QUEUE_BULL_REDIS_TIMEOUT_THRESHOLD',
@@ -540,6 +371,12 @@ export const schema = {
 		env: 'N8N_PROTOCOL',
 		doc: 'HTTP Protocol via which n8n can be reached',
 	},
+	secure_cookie: {
+		doc: 'This sets the `Secure` flag on n8n auth cookie',
+		format: Boolean,
+		default: true,
+		env: 'N8N_SECURE_COOKIE',
+	},
 	ssl_key: {
 		format: String,
 		default: '',
@@ -579,12 +416,6 @@ export const schema = {
 				default: 90,
 				env: 'N8N_SECURITY_AUDIT_DAYS_ABANDONED_WORKFLOW',
 			},
-		},
-		excludeEndpoints: {
-			doc: 'Additional endpoints to exclude auth checks. Multiple endpoints can be separated by colon (":")',
-			format: String,
-			default: '',
-			env: 'N8N_AUTH_EXCLUDE_ENDPOINTS',
 		},
 	},
 
@@ -723,6 +554,12 @@ export const schema = {
 			env: 'N8N_DISABLE_PRODUCTION_MAIN_PROCESS',
 			doc: 'Disable production webhooks from main process. This helps ensures no http traffic load to main process when using webhook-specific processes.',
 		},
+		additionalNonUIRoutes: {
+			doc: 'Additional endpoints to not open the UI on. Multiple endpoints can be separated by colon (":")',
+			format: String,
+			default: '',
+			env: 'N8N_ADDITIONAL_NON_UI_ROUTES',
+		},
 	},
 
 	publicApi: {
@@ -779,92 +616,6 @@ export const schema = {
 			doc: "Whether the instance owner's account has been set up",
 			format: Boolean,
 			default: false,
-		},
-		emails: {
-			mode: {
-				doc: 'How to send emails',
-				format: ['', 'smtp'] as const,
-				default: 'smtp',
-				env: 'N8N_EMAIL_MODE',
-			},
-			smtp: {
-				host: {
-					doc: 'SMTP server host',
-					format: String, // e.g. 'smtp.gmail.com'
-					default: '',
-					env: 'N8N_SMTP_HOST',
-				},
-				port: {
-					doc: 'SMTP server port',
-					format: Number,
-					default: 465,
-					env: 'N8N_SMTP_PORT',
-				},
-				secure: {
-					doc: 'Whether or not to use SSL for SMTP',
-					format: Boolean,
-					default: true,
-					env: 'N8N_SMTP_SSL',
-				},
-				auth: {
-					user: {
-						doc: 'SMTP login username',
-						format: String, // e.g.'you@gmail.com'
-						default: '',
-						env: 'N8N_SMTP_USER',
-					},
-					pass: {
-						doc: 'SMTP login password',
-						format: String,
-						default: '',
-						env: 'N8N_SMTP_PASS',
-					},
-					serviceClient: {
-						doc: 'SMTP OAuth Service Client',
-						format: String,
-						default: '',
-						env: 'N8N_SMTP_OAUTH_SERVICE_CLIENT',
-					},
-					privateKey: {
-						doc: 'SMTP OAuth Private Key',
-						format: String,
-						default: '',
-						env: 'N8N_SMTP_OAUTH_PRIVATE_KEY',
-					},
-				},
-				sender: {
-					doc: 'How to display sender name',
-					format: String,
-					default: '',
-					env: 'N8N_SMTP_SENDER',
-				},
-			},
-			templates: {
-				invite: {
-					doc: 'Overrides default HTML template for inviting new people (use full path)',
-					format: String,
-					default: '',
-					env: 'N8N_UM_EMAIL_TEMPLATES_INVITE',
-				},
-				passwordReset: {
-					doc: 'Overrides default HTML template for resetting password (use full path)',
-					format: String,
-					default: '',
-					env: 'N8N_UM_EMAIL_TEMPLATES_PWRESET',
-				},
-				workflowShared: {
-					doc: 'Overrides default HTML template for notifying that a workflow was shared (use full path)',
-					format: String,
-					default: '',
-					env: 'N8N_UM_EMAIL_TEMPLATES_WORKFLOW_SHARED',
-				},
-				credentialsShared: {
-					doc: 'Overrides default HTML template for notifying that credentials were shared (use full path)',
-					format: String,
-					default: '',
-					env: 'N8N_UM_EMAIL_TEMPLATES_CREDENTIALS_SHARED',
-				},
-			},
 		},
 		authenticationMethod: {
 			doc: 'How to authenticate users (e.g. "email", "ldap", "saml")',
@@ -1190,15 +941,6 @@ export const schema = {
 		format: String,
 		default: 'en',
 		env: 'N8N_DEFAULT_LOCALE',
-	},
-
-	onboardingCallPrompt: {
-		enabled: {
-			doc: 'Whether onboarding call prompt feature is available',
-			format: Boolean,
-			default: true,
-			env: 'N8N_ONBOARDING_CALL_PROMPTS_ENABLED',
-		},
 	},
 
 	license: {

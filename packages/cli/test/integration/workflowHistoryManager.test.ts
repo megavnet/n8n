@@ -1,5 +1,5 @@
 import Container from 'typedi';
-import { In } from 'typeorm';
+import { In } from '@n8n/typeorm';
 import { DateTime } from 'luxon';
 
 import config from '@/config';
@@ -32,6 +32,10 @@ describe('Workflow History Manager', () => {
 
 		license.isWorkflowHistoryLicensed.mockReturnValue(true);
 		license.getWorkflowHistoryPruneLimit.mockReturnValue(-1);
+	});
+
+	afterAll(async () => {
+		await testDb.terminate();
 	});
 
 	test('should prune on interval', () => {

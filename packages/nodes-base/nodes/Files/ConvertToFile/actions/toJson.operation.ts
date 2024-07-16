@@ -53,6 +53,13 @@ export const properties: INodeProperties[] = [
 				},
 			},
 			{
+				displayName: 'Format',
+				name: 'format',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to format the JSON data for easier reading',
+			},
+			{
 				displayName: 'Encoding',
 				name: 'encoding',
 				type: 'options',
@@ -98,6 +105,7 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 					mimeType: 'application/json',
 					encoding: options.encoding as string,
 					addBOM: options.addBOM as boolean,
+					format: options.format as boolean,
 				},
 			);
 
@@ -111,7 +119,7 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 
 			returnData = [newItem];
 		} catch (error) {
-			if (this.continueOnFail()) {
+			if (this.continueOnFail(error)) {
 				returnData.push({
 					json: {
 						error: error.message,
@@ -131,6 +139,7 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 					fileName: options.fileName as string,
 					encoding: options.encoding as string,
 					addBOM: options.addBOM as boolean,
+					format: options.format as boolean,
 					mimeType: 'application/json',
 					itemIndex: i,
 				});
@@ -145,7 +154,7 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 
 				returnData.push(newItem);
 			} catch (error) {
-				if (this.continueOnFail()) {
+				if (this.continueOnFail(error)) {
 					returnData.push({
 						json: {
 							error: error.message,

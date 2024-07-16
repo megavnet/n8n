@@ -24,11 +24,12 @@ export const ChatPlugin: Plugin<ChatOptions> = {
 			})),
 		);
 
-		async function sendMessage(text: string) {
+		async function sendMessage(text: string, files: File[] = []) {
 			const sentMessage: ChatMessage = {
 				id: uuidv4(),
 				text,
 				sender: 'user',
+				files,
 				createdAt: new Date().toISOString(),
 			};
 
@@ -41,13 +42,24 @@ export const ChatPlugin: Plugin<ChatOptions> = {
 
 			const sendMessageResponse = await api.sendMessage(
 				text,
+				files,
 				currentSessionId.value as string,
 				options,
 			);
 
+			let textMessage = sendMessageResponse.output ?? sendMessageResponse.text ?? '';
+
+			if (textMessage === '' && Object.keys(sendMessageResponse).length > 0) {
+				try {
+					textMessage = JSON.stringify(sendMessageResponse, null, 2);
+				} catch (e) {
+					// Failed to stringify the object so fallback to empty string
+				}
+			}
+
 			const receivedMessage: ChatMessage = {
 				id: uuidv4(),
-				text: sendMessageResponse.output,
+				text: textMessage,
 				sender: 'bot',
 				createdAt: new Date().toISOString(),
 			};

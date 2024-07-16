@@ -1,8 +1,7 @@
-import { Authorized, Get, Post, RequireGlobalScope, RestController } from '@/decorators';
-import { LicenseRequest } from '@/requests';
+import { Get, Post, RestController, GlobalScope } from '@/decorators';
+import { AuthenticatedRequest, LicenseRequest } from '@/requests';
 import { LicenseService } from './license.service';
 
-@Authorized()
 @RestController('/license')
 export class LicenseController {
 	constructor(private readonly licenseService: LicenseService) {}
@@ -12,8 +11,14 @@ export class LicenseController {
 		return await this.licenseService.getLicenseData();
 	}
 
+	@Post('/enterprise/request_trial')
+	@GlobalScope('license:manage')
+	async requestEnterpriseTrial(req: AuthenticatedRequest) {
+		await this.licenseService.requestEnterpriseTrial(req.user);
+	}
+
 	@Post('/activate')
-	@RequireGlobalScope('license:manage')
+	@GlobalScope('license:manage')
 	async activateLicense(req: LicenseRequest.Activate) {
 		const { activationKey } = req.body;
 		await this.licenseService.activateLicense(activationKey);
@@ -21,7 +26,7 @@ export class LicenseController {
 	}
 
 	@Post('/renew')
-	@RequireGlobalScope('license:manage')
+	@GlobalScope('license:manage')
 	async renewLicense() {
 		await this.licenseService.renewLicense();
 		return await this.getTokenAndData();

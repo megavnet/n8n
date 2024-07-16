@@ -7,9 +7,6 @@ import type {
 
 import { BINARY_ENCODING, NodeOperationError, deepCopy, jsonParse } from 'n8n-workflow';
 
-import { encodeDecodeOptions } from '@utils/descriptions';
-import { updateDisplayOptions } from '@utils/utilities';
-
 import get from 'lodash/get';
 import set from 'lodash/set';
 import unset from 'lodash/unset';
@@ -17,6 +14,8 @@ import unset from 'lodash/unset';
 import iconv from 'iconv-lite';
 
 import { icsCalendarToObject } from 'ts-ics';
+import { updateDisplayOptions } from '@utils/utilities';
+import { encodeDecodeOptions } from '@utils/descriptions';
 
 export const properties: INodeProperties[] = [
 	{
@@ -170,7 +169,7 @@ export async function execute(
 				errorDescription =
 					"Try to change the operation or select a JSON file in 'Input Binary Field'";
 			}
-			if (this.continueOnFail()) {
+			if (this.continueOnFail(error)) {
 				returnData.push({
 					json: {
 						error: error.message,

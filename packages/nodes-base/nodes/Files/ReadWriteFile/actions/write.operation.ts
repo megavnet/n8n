@@ -1,10 +1,9 @@
+import type { Readable } from 'stream';
 import type { IExecuteFunctions, INodeExecutionData, INodeProperties } from 'n8n-workflow';
 import { BINARY_ENCODING } from 'n8n-workflow';
 
-import type { Readable } from 'stream';
-
-import { updateDisplayOptions } from '@utils/utilities';
 import { errorMapper } from '../helpers/utils';
+import { updateDisplayOptions } from '@utils/utilities';
 
 export const properties: INodeProperties[] = [
 	{
@@ -104,7 +103,7 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 				filePath: fileName,
 				operation: 'write',
 			});
-			if (this.continueOnFail()) {
+			if (this.continueOnFail(error)) {
 				returnData.push({
 					json: {
 						error: nodeOperatioinError.message,

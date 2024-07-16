@@ -8,43 +8,30 @@
 	</N8nRoute>
 </template>
 
-<script lang="ts">
-import { defineComponent } from 'vue';
+<script lang="ts" setup>
+import type { RouteLocationRaw } from 'vue-router';
 import N8nText from '../N8nText';
 import N8nRoute from '../N8nRoute';
+import type { TextSize } from 'n8n-design-system/types/text';
 
-export default defineComponent({
-	name: 'N8nLink',
-	components: {
-		N8nText,
-		N8nRoute,
-	},
-	props: {
-		size: {
-			type: String,
-		},
-		to: {
-			type: String || Object,
-		},
-		newWindow: {
-			type: Boolean || undefined,
-			default: undefined,
-		},
-		bold: {
-			type: Boolean,
-			default: false,
-		},
-		underline: {
-			type: Boolean,
-			default: false,
-		},
-		theme: {
-			type: String,
-			default: 'primary',
-			validator: (value: string): boolean =>
-				['primary', 'danger', 'text', 'secondary'].includes(value),
-		},
-	},
+const THEME = ['primary', 'danger', 'text', 'secondary'] as const;
+
+interface LinkProps {
+	to?: RouteLocationRaw | string;
+	size?: TextSize;
+	newWindow?: boolean;
+	bold?: boolean;
+	underline?: boolean;
+	theme?: (typeof THEME)[number];
+}
+
+defineOptions({ name: 'N8nLink' });
+withDefaults(defineProps<LinkProps>(), {
+	to: undefined,
+	size: undefined,
+	bold: false,
+	underline: false,
+	theme: 'primary',
 });
 </script>
 

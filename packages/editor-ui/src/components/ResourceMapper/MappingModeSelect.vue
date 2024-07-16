@@ -44,8 +44,8 @@ const mappingModeOptions = [
 ];
 
 const emit = defineEmits<{
-	(event: 'modeChanged', value: string): void;
-	(event: 'retryFetch'): void;
+	modeChanged: [value: string];
+	retryFetch: [];
 }>();
 
 const selected = ref(props.initialValue);
@@ -115,7 +115,7 @@ defineExpose({
 					:model-value="selected"
 					:teleported="teleported"
 					:size="props.inputSize"
-					@update:modelValue="onModeChanged"
+					@update:model-value="onModeChanged"
 				>
 					<n8n-option
 						v-for="option in mappingModeOptions"

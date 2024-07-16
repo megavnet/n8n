@@ -1,5 +1,6 @@
 import { ElNotification as Notification } from 'element-plus';
-import type { NotificationInstance, NotificationOptions, MessageBoxState } from 'element-plus';
+import type { NotificationHandle, MessageBoxState } from 'element-plus';
+import type { NotificationOptions } from '@/Interface';
 import { sanitizeHtml } from '@/utils/htmlUtils';
 import { useTelemetry } from '@/composables/useTelemetry';
 import { useWorkflowsStore } from '@/stores/workflows.store';
@@ -7,13 +8,21 @@ import { useUIStore } from '@/stores/ui.store';
 import { useI18n } from './useI18n';
 import { useExternalHooks } from './useExternalHooks';
 import { VIEWS } from '@/constants';
+import type { ApplicationError } from 'n8n-workflow';
+
+export interface NotificationErrorWithNodeAndDescription extends ApplicationError {
+	node: {
+		name: string;
+	};
+	description: string;
+}
 
 const messageDefaults: Partial<Omit<NotificationOptions, 'message'>> = {
 	dangerouslyUseHTMLString: true,
 	position: 'bottom-right',
 };
 
-const stickyNotificationQueue: NotificationInstance[] = [];
+const stickyNotificationQueue: NotificationHandle[] = [];
 
 export function useToast() {
 	const telemetry = useTelemetry();
@@ -22,12 +31,17 @@ export function useToast() {
 	const externalHooks = useExternalHooks();
 	const i18n = useI18n();
 
-	function showMessage(messageData: NotificationOptions, track = true) {
+	function showMessage(messageData: Partial<NotificationOptions>, track = true) {
 		messageData = { ...messageDefaults, ...messageData };
-		messageData.message =
-			typeof messageData.message === 'string'
-				? sanitizeHtml(messageData.message)
-				: messageData.message;
+
+		Object.defineProperty(messageData, 'message', {
+			value:
+				typeof messageData.message === 'string'
+					? sanitizeHtml(messageData.message)
+					: messageData.message,
+			writable: true,
+			enumerable: true,
+		});
 
 		const notification = Notification(messageData);
 
@@ -39,7 +53,7 @@ export function useToast() {
 			telemetry.track('Instance FE emitted error', {
 				error_title: messageData.title,
 				error_message: messageData.message,
-				caused_by_credential: causedByCredential(messageData.message),
+				caused_by_credential: causedByCredential(messageData.message as string),
 				workflow_id: workflowsStore.workflowId,
 			});
 		}
@@ -59,7 +73,7 @@ export function useToast() {
 		dangerouslyUseHTMLString?: boolean;
 	}) {
 		// eslint-disable-next-line prefer-const
-		let notification: NotificationInstance;
+		let notification: NotificationHandle;
 		if (config.closeOnClick) {
 			const cb = config.onClick;
 			config.onClick = () => {
@@ -87,7 +101,7 @@ export function useToast() {
 		return notification;
 	}
 
-	function collapsableDetails({ description, node }: Error) {
+	function collapsableDetails({ description, node }: NotificationErrorWithNodeAndDescription) {
 		if (!description) return '';
 
 		const errorDescription =
@@ -108,7 +122,7 @@ export function useToast() {
 	}
 
 	function showError(e: Error | unknown, title: string, message?: string) {
-		const error = e as Error;
+		const error = e as NotificationErrorWithNodeAndDescription;
 		const messageLine = message ? `${message}<br/>` : '';
 		showMessage(
 			{
@@ -138,7 +152,7 @@ export function useToast() {
 		});
 	}
 
-	function showAlert(config: NotificationOptions): NotificationInstance {
+	function showAlert(config: NotificationOptions): NotificationHandle {
 		return Notification(config);
 	}
 
@@ -162,7 +176,7 @@ export function useToast() {
 	function showNotificationForViews(views: VIEWS[]) {
 		const notifications: NotificationOptions[] = [];
 		views.forEach((view) => {
-			notifications.push(...uiStore.getNotificationsForView(view));
+			notifications.push(...(uiStore.pendingNotificationsForViews[view] ?? []));
 		});
 		if (notifications.length) {
 			notifications.forEach(async (notification) => {

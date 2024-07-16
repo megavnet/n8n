@@ -1,10 +1,10 @@
 <template>
-	<div :class="$style.jsonDisplay">
+	<div :class="[$style.jsonDisplay, { [$style.highlight]: highlight }]">
 		<Suspense>
 			<RunDataJsonActions
 				v-if="!editMode.enabled"
 				:node="node"
-				:sessio-id="sessionId"
+				:push-ref="pushRef"
 				:display-mode="displayMode"
 				:distance-from-active="distanceFromActive"
 				:selected-json-path="selectedJsonPath"
@@ -30,7 +30,7 @@
 				root-path=""
 				selectable-type="single"
 				class="json-data"
-				@update:selectedValue="selectedJsonPath = $event"
+				@update:selected-value="selectedJsonPath = $event"
 			>
 				<template #renderNodeKey="{ node }">
 					<TextWithHighlights
@@ -108,9 +108,10 @@ export default defineComponent({
 	},
 	props: {
 		editMode: {
-			type: Object as () => { enabled?: boolean; value?: string },
+			type: Object as PropType<{ enabled?: boolean; value?: string }>,
+			default: () => ({}),
 		},
-		sessionId: {
+		pushRef: {
 			type: String,
 		},
 		paneType: {
@@ -118,15 +119,18 @@ export default defineComponent({
 		},
 		node: {
 			type: Object as PropType<INodeUi>,
+			required: true,
 		},
 		inputData: {
 			type: Array as PropType<INodeExecutionData[]>,
+			required: true,
 		},
 		mappingEnabled: {
 			type: Boolean,
 		},
 		distanceFromActive: {
 			type: Number,
+			required: true,
 		},
 		runIndex: {
 			type: Number,
@@ -156,6 +160,9 @@ export default defineComponent({
 		...mapStores(useNDVStore, useWorkflowsStore),
 		jsonData(): IDataObject[] {
 			return executionDataToJson(this.inputData);
+		},
+		highlight(): boolean {
+			return this.ndvStore.highlightDraggables;
 		},
 	},
 	methods: {
@@ -200,7 +207,9 @@ export default defineComponent({
 
 			setTimeout(() => {
 				void this.externalHooks.run('runDataJson.onDragEnd', telemetryPayload);
-				this.$telemetry.track('User dragged data for mapping', telemetryPayload);
+				this.$telemetry.track('User dragged data for mapping', telemetryPayload, {
+					withPostHog: true,
+				});
 			}, 1000); // ensure dest data gets set if drop
 		},
 		getContent(value: unknown): string {
@@ -232,20 +241,22 @@ export default defineComponent({
 			opacity: 1;
 		}
 	}
-}
 
-.mappable {
-	cursor: grab;
+	.mappable {
+		cursor: grab;
 
-	&:hover {
-		background-color: var(--color-json-highlight);
+		&:hover {
+			background-color: var(--color-json-highlight);
+		}
 	}
-}
 
-.dragged {
-	&,
-	&:hover {
-		background-color: var(--color-primary-tint-2);
+	&.highlight .mappable,
+	.dragged {
+		&,
+		&:hover {
+			background-color: var(--color-primary-tint-2);
+			color: var(--color-primary);
+		}
 	}
 }
 </style>
@@ -253,6 +264,7 @@ export default defineComponent({
 <style lang="scss">
 .vjs-tree {
 	color: var(--color-json-default);
+	--color-line-break: var(--color-code-line-break);
 }
 
 .vjs-tree-node {

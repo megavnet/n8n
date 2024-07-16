@@ -31,15 +31,15 @@
 				<WorkflowPreview
 					v-if="showPreview"
 					:loading="loading"
-					:workflow="template && template.workflow"
+					:workflow="template?.workflow"
 					@close="onHidePreview"
 				/>
 			</div>
 			<div :class="$style.content">
 				<div :class="$style.markdown" data-test-id="template-description">
 					<n8n-markdown
-						:content="template && template.description"
-						:images="template && template.image"
+						:content="template?.description"
+						:images="template?.image"
 						:loading="loading"
 					/>
 				</div>
@@ -64,7 +64,6 @@ import TemplatesView from './TemplatesView.vue';
 import WorkflowPreview from '@/components/WorkflowPreview.vue';
 
 import type { ITemplatesWorkflowFull } from '@/Interface';
-import { workflowHelpers } from '@/mixins/workflowHelpers';
 import { setPageTitle } from '@/utils/htmlUtils';
 import { useTemplatesStore } from '@/stores/templates.store';
 import { usePostHog } from '@/stores/posthog.store';
@@ -79,7 +78,6 @@ export default defineComponent({
 		TemplatesView,
 		WorkflowPreview,
 	},
-	mixins: [workflowHelpers],
 	setup() {
 		const externalHooks = useExternalHooks();
 

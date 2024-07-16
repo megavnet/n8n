@@ -1,20 +1,16 @@
-import Container from 'typedi';
-import jwt from 'jsonwebtoken';
-import { Logger } from '@/Logger';
-import config from '@/config';
-import { User } from '@db/entities/User';
-import { UserRepository } from '@db/repositories/user.repository';
-import { UserService } from '@/services/user.service';
-import { mockInstance } from '../../shared/mocking';
+import { mock } from 'jest-mock-extended';
 import { v4 as uuid } from 'uuid';
 
+import { User } from '@db/entities/User';
+import { UserService } from '@/services/user.service';
+import { UrlService } from '@/services/url.service';
+import { mockInstance } from '../../shared/mocking';
+import { UserRepository } from '@/databases/repositories/user.repository';
+
 describe('UserService', () => {
-	config.set('userManagement.jwtSecret', 'random-secret');
-
-	mockInstance(Logger);
-
+	const urlService = new UrlService();
 	const userRepository = mockInstance(UserRepository);
-	const userService = Container.get(UserService);
+	const userService = new UserService(mock(), userRepository, mock(), urlService);
 
 	const commonMockUser = Object.assign(new User(), {
 		id: uuid(),
@@ -34,15 +30,13 @@ describe('UserService', () => {
 			});
 
 			type MaybeSensitiveProperties = Partial<
-				Pick<User, 'password' | 'mfaSecret' | 'mfaRecoveryCodes' | 'updatedAt' | 'authIdentities'>
+				Pick<User, 'password' | 'updatedAt' | 'authIdentities'>
 			>;
 
 			// to prevent typechecking from blocking assertions
 			const publicUser: MaybeSensitiveProperties = await userService.toPublic(mockUser);
 
 			expect(publicUser.password).toBeUndefined();
-			expect(publicUser.mfaSecret).toBeUndefined();
-			expect(publicUser.mfaRecoveryCodes).toBeUndefined();
 			expect(publicUser.updatedAt).toBeUndefined();
 			expect(publicUser.authIdentities).toBeUndefined();
 		});
@@ -74,65 +68,27 @@ describe('UserService', () => {
 		});
 	});
 
-	describe('generatePasswordResetToken', () => {
-		it('should generate valid password-reset tokens', () => {
-			const token = userService.generatePasswordResetToken(commonMockUser);
+	describe('update', () => {
+		// We need to use `save` so that that the subscriber in
+		// packages/cli/src/databases/entities/Project.ts receives the full user.
+		// With `update` it would only receive the updated fields, e.g. the `id`
+		// would be missing.
+		it('should use `save` instead of `update`', async () => {
+			const user = new User();
+			user.firstName = 'Not Nathan';
+			user.lastName = 'Nathaniel';
 
-			const decoded = jwt.decode(token) as jwt.JwtPayload;
+			const userId = '1234';
+			const data = {
+				firstName: 'Nathan',
+			};
 
-			if (!decoded.exp) fail('Token does not contain expiry');
-			if (!decoded.iat) fail('Token does not contain issued-at');
+			userRepository.findOneBy.mockResolvedValueOnce(user);
 
-			expect(decoded.sub).toEqual(commonMockUser.id);
-			expect(decoded.exp - decoded.iat).toEqual(1200); // Expires in 20 minutes
-			expect(decoded.passwordSha).toEqual(
-				'31513c5a9e3c5afe5c06d5675ace74e8bc3fadd9744ab5d89c311f2a62ccbd39',
-			);
-		});
-	});
+			await userService.update(userId, data);
 
-	describe('resolvePasswordResetToken', () => {
-		it('should not return a user if the token in invalid', async () => {
-			const user = await userService.resolvePasswordResetToken('invalid-token');
-
-			expect(user).toBeUndefined();
-		});
-
-		it('should not return a user if the token in expired', async () => {
-			const token = userService.generatePasswordResetToken(commonMockUser, '-1h');
-
-			const user = await userService.resolvePasswordResetToken(token);
-
-			expect(user).toBeUndefined();
-		});
-
-		it('should not return a user if the user does not exist in the DB', async () => {
-			userRepository.findOne.mockResolvedValueOnce(null);
-			const token = userService.generatePasswordResetToken(commonMockUser);
-
-			const user = await userService.resolvePasswordResetToken(token);
-
-			expect(user).toBeUndefined();
-		});
-
-		it('should not return a user if the password sha does not match', async () => {
-			const token = userService.generatePasswordResetToken(commonMockUser);
-			const updatedUser = Object.create(commonMockUser);
-			updatedUser.password = 'something-else';
-			userRepository.findOne.mockResolvedValueOnce(updatedUser);
-
-			const user = await userService.resolvePasswordResetToken(token);
-
-			expect(user).toBeUndefined();
-		});
-
-		it('should not return the user if all checks pass', async () => {
-			const token = userService.generatePasswordResetToken(commonMockUser);
-			userRepository.findOne.mockResolvedValueOnce(commonMockUser);
-
-			const user = await userService.resolvePasswordResetToken(token);
-
-			expect(user).toEqual(commonMockUser);
+			expect(userRepository.save).toHaveBeenCalledWith({ ...user, ...data }, { transaction: true });
+			expect(userRepository.update).not.toHaveBeenCalled();
 		});
 	});
 });

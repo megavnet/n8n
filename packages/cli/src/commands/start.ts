@@ -5,18 +5,18 @@ import { Flags, type Config } from '@oclif/core';
 import path from 'path';
 import { mkdir } from 'fs/promises';
 import { createReadStream, createWriteStream, existsSync } from 'fs';
-import stream from 'stream';
+import { pipeline } from 'stream/promises';
 import replaceStream from 'replacestream';
-import { promisify } from 'util';
 import glob from 'fast-glob';
-import { sleep, jsonParse } from 'n8n-workflow';
+import { GlobalConfig } from '@n8n/config';
+import { jsonParse, randomString } from 'n8n-workflow';
 
 import config from '@/config';
 import { ActiveExecutions } from '@/ActiveExecutions';
-import { ActiveWorkflowRunner } from '@/ActiveWorkflowRunner';
+import { ActiveWorkflowManager } from '@/ActiveWorkflowManager';
 import { Server } from '@/Server';
 import { EDITOR_UI_DIST_DIR, LICENSE_FEATURES } from '@/constants';
-import { MessageEventBus } from '@/eventbus';
+import { MessageEventBus } from '@/eventbus/MessageEventBus/MessageEventBus';
 import { InternalHooks } from '@/InternalHooks';
 import { License } from '@/License';
 import { OrchestrationService } from '@/services/orchestration.service';
@@ -28,10 +28,15 @@ import { ExecutionRepository } from '@db/repositories/execution.repository';
 import { FeatureNotLicensedError } from '@/errors/feature-not-licensed.error';
 import { WaitTracker } from '@/WaitTracker';
 import { BaseCommand } from './BaseCommand';
+import type { IWorkflowExecutionDataProcess } from '@/Interfaces';
+import { ExecutionService } from '@/executions/execution.service';
+import { OwnershipService } from '@/services/ownership.service';
+import { WorkflowRunner } from '@/WorkflowRunner';
+import { ExecutionRecoveryService } from '@/executions/execution-recovery.service';
+import { EventRelay } from '@/eventbus/event-relay.service';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-var-requires
 const open = require('open');
-const pipeline = promisify(stream.pipeline);
 
 export class Start extends BaseCommand {
 	static description = 'Starts n8n. Makes Web-UI available and starts active workflows';
@@ -59,11 +64,9 @@ export class Start extends BaseCommand {
 		}),
 	};
 
-	protected activeWorkflowRunner: ActiveWorkflowRunner;
+	protected activeWorkflowManager: ActiveWorkflowManager;
 
 	protected server = Container.get(Server);
-
-	private pruningService: PruningService;
 
 	constructor(argv: string[], cmdConfig: Config) {
 		super(argv, cmdConfig);
@@ -78,7 +81,7 @@ export class Start extends BaseCommand {
 		const editorUrl = Container.get(UrlService).baseUrl;
 
 		open(editorUrl, { wait: true }).catch(() => {
-			console.log(
+			this.logger.info(
 				`\nWas not able to open URL in browser. Please open manually by visiting:\n${editorUrl}\n`,
 			);
 		});
@@ -94,37 +97,21 @@ export class Start extends BaseCommand {
 
 		try {
 			// Stop with trying to activate workflows that could not be activated
-			this.activeWorkflowRunner.removeAllQueuedWorkflowActivations();
+			this.activeWorkflowManager.removeAllQueuedWorkflowActivations();
 
-			Container.get(WaitTracker).shutdown();
+			Container.get(WaitTracker).stopTracking();
 
 			await this.externalHooks?.run('n8n.stop', []);
 
-			if (Container.get(OrchestrationService).isMultiMainSetupEnabled) {
-				await this.activeWorkflowRunner.removeAllTriggerAndPollerBasedWorkflows();
+			await this.activeWorkflowManager.removeAllTriggerAndPollerBasedWorkflows();
 
+			if (Container.get(OrchestrationService).isMultiMainSetupEnabled) {
 				await Container.get(OrchestrationService).shutdown();
 			}
 
 			await Container.get(InternalHooks).onN8nStop();
 
-			// Wait for active workflow executions to finish
-			const activeExecutionsInstance = Container.get(ActiveExecutions);
-			let executingWorkflows = activeExecutionsInstance.getActiveExecutions();
-
-			let count = 0;
-			while (executingWorkflows.length !== 0) {
-				if (count++ % 4 === 0) {
-					console.log(`Waiting for ${executingWorkflows.length} active executions to finish...`);
-
-					executingWorkflows.map((execution) => {
-						console.log(` - Execution ID ${execution.id}, workflow ID: ${execution.workflowId}`);
-					});
-				}
-
-				await sleep(500);
-				executingWorkflows = activeExecutionsInstance.getActiveExecutions();
-			}
+			await Container.get(ActiveExecutions).shutdown();
 
 			// Finally shut down Event Bus
 			await Container.get(MessageEventBus).close();
@@ -159,6 +146,7 @@ export class Start extends BaseCommand {
 					createReadStream(filePath, 'utf-8'),
 					replaceStream('/{{BASE_PATH}}/', n8nPath, { ignoreCase: false }),
 					replaceStream('/%7B%7BBASE_PATH%7D%7D/', n8nPath, { ignoreCase: false }),
+					replaceStream('/%257B%257BBASE_PATH%257D%257D/', n8nPath, { ignoreCase: false }),
 					replaceStream('/static/', n8nPath + 'static/', { ignoreCase: false }),
 				];
 				if (filePath.endsWith('index.html')) {
@@ -189,12 +177,24 @@ export class Start extends BaseCommand {
 		}
 
 		await super.init();
-		this.activeWorkflowRunner = Container.get(ActiveWorkflowRunner);
+		this.activeWorkflowManager = Container.get(ActiveWorkflowManager);
 
 		await this.initLicense();
 
 		await this.initOrchestration();
 		this.logger.debug('Orchestration init complete');
+
+		if (
+			!config.getEnv('license.autoRenewEnabled') &&
+			config.getEnv('multiMainSetup.instanceType') === 'leader'
+		) {
+			this.logger.warn(
+				'Automatic license renewal is disabled. The license will not renew automatically, and access to licensed features may be lost!',
+			);
+		}
+
+		Container.get(WaitTracker).init();
+		this.logger.debug('Wait tracker init complete');
 		await this.initBinaryDataService();
 		this.logger.debug('Binary data service init complete');
 		await this.initExternalHooks();
@@ -210,7 +210,10 @@ export class Start extends BaseCommand {
 	}
 
 	async initOrchestration() {
-		if (config.getEnv('executions.mode') !== 'queue') return;
+		if (config.getEnv('executions.mode') === 'regular') {
+			config.set('multiMainSetup.instanceType', 'leader');
+			return;
+		}
 
 		if (
 			config.getEnv('multiMainSetup.enabled') &&
@@ -228,31 +231,13 @@ export class Start extends BaseCommand {
 		if (!orchestrationService.isMultiMainSetupEnabled) return;
 
 		orchestrationService.multiMainSetup
-			.addListener('leadershipChange', async () => {
-				if (orchestrationService.isLeader) {
-					this.logger.debug('[Leadership change] Clearing all activation errors...');
-
-					await this.activeWorkflowRunner.clearAllActivationErrors();
-
-					this.logger.debug(
-						'[Leadership change] Adding all trigger- and poller-based workflows...',
-					);
-
-					await this.activeWorkflowRunner.addAllTriggerAndPollerBasedWorkflows();
-				} else {
-					this.logger.debug(
-						'[Leadership change] Removing all trigger- and poller-based workflows...',
-					);
-
-					await this.activeWorkflowRunner.removeAllTriggerAndPollerBasedWorkflows();
-				}
+			.on('leader-stepdown', async () => {
+				await this.license.reinit(); // to disable renewal
+				await this.activeWorkflowManager.removeAllTriggerAndPollerBasedWorkflows();
 			})
-			.addListener('leadershipVacant', async () => {
-				this.logger.debug(
-					'[Leadership vacant] Removing all trigger- and poller-based workflows...',
-				);
-
-				await this.activeWorkflowRunner.removeAllTriggerAndPollerBasedWorkflows();
+			.on('leader-takeover', async () => {
+				await this.license.reinit(); // to enable renewal
+				await this.activeWorkflowManager.addAllTriggerAndPollerBasedWorkflows();
 			});
 	}
 
@@ -276,9 +261,10 @@ export class Start extends BaseCommand {
 			});
 		}
 
-		const dbType = config.getEnv('database.type');
+		const globalConfig = Container.get(GlobalConfig);
+		const { type: dbType } = globalConfig.database;
 		if (dbType === 'sqlite') {
-			const shouldRunVacuum = config.getEnv('database.sqlite.executeVacuumOnStartup');
+			const shouldRunVacuum = globalConfig.database.sqlite.executeVacuumOnStartup;
 			if (shouldRunVacuum) {
 				await Container.get(ExecutionRepository).query('VACUUM;');
 			}
@@ -292,12 +278,7 @@ export class Start extends BaseCommand {
 
 			if (tunnelSubdomain === '') {
 				// When no tunnel subdomain did exist yet create a new random one
-				const availableCharacters = 'abcdefghijklmnopqrstuvwxyz0123456789';
-				tunnelSubdomain = Array.from({ length: 24 })
-					.map(() =>
-						availableCharacters.charAt(Math.floor(Math.random() * availableCharacters.length)),
-					)
-					.join('');
+				tunnelSubdomain = randomString(24).toLowerCase();
 
 				this.instanceSettings.update({ tunnelSubdomain });
 			}
@@ -319,10 +300,15 @@ export class Start extends BaseCommand {
 
 		await this.server.start();
 
-		await this.initPruning();
+		Container.get(PruningService).init();
+		Container.get(ExecutionRecoveryService).init();
+
+		if (config.getEnv('executions.mode') === 'regular') {
+			await this.runEnqueuedExecutions();
+		}
 
 		// Start to get active workflows and run their triggers
-		await this.activeWorkflowRunner.init();
+		await this.activeWorkflowManager.init();
 
 		const editorUrl = Container.get(UrlService).baseUrl;
 		this.log(`\nEditor is now accessible via:\n${editorUrl}`);
@@ -358,34 +344,46 @@ export class Start extends BaseCommand {
 		}
 	}
 
-	async initPruning() {
-		this.pruningService = Container.get(PruningService);
-
-		this.pruningService.startPruning();
-
-		if (config.getEnv('executions.mode') !== 'queue') return;
-
-		const orchestrationService = Container.get(OrchestrationService);
-
-		await orchestrationService.init();
-
-		if (!orchestrationService.isMultiMainSetupEnabled) return;
-
-		orchestrationService.multiMainSetup
-			.addListener('leadershipChange', async () => {
-				if (orchestrationService.isLeader) {
-					this.pruningService.startPruning();
-				} else {
-					this.pruningService.stopPruning();
-				}
-			})
-			.addListener('leadershipVacant', () => {
-				this.pruningService.stopPruning();
-			});
+	async catch(error: Error) {
+		if (error.stack) this.logger.error(error.stack);
+		await this.exitWithCrash('Exiting due to an error.', error);
 	}
 
-	async catch(error: Error) {
-		console.log(error.stack);
-		await this.exitWithCrash('Exiting due to an error.', error);
+	/**
+	 * During startup, we may find executions that had been enqueued at the time of shutdown.
+	 *
+	 * If so, start running any such executions concurrently up to the concurrency limit, and
+	 * enqueue any remaining ones until we have spare concurrency capacity again.
+	 */
+	private async runEnqueuedExecutions() {
+		const executions = await Container.get(ExecutionService).findAllEnqueuedExecutions();
+
+		if (executions.length === 0) return;
+
+		this.logger.debug(
+			'[Startup] Found enqueued executions to run',
+			executions.map((e) => e.id),
+		);
+
+		const ownershipService = Container.get(OwnershipService);
+		const workflowRunner = Container.get(WorkflowRunner);
+
+		for (const execution of executions) {
+			const project = await ownershipService.getWorkflowProjectCached(execution.workflowId);
+
+			const data: IWorkflowExecutionDataProcess = {
+				executionMode: execution.mode,
+				executionData: execution.data,
+				workflowData: execution.workflowData,
+				projectId: project.id,
+			};
+
+			Container.get(EventRelay).emit('execution-started-during-bootup', {
+				executionId: execution.id,
+			});
+
+			// do not block - each execution either runs concurrently or is queued
+			void workflowRunner.run(data, undefined, false, execution.id);
+		}
 	}
 }

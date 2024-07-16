@@ -34,6 +34,7 @@ import * as WorkflowExecuteAdditionalData from '@/WorkflowExecuteAdditionalData'
 import { TestWebhooks } from '@/TestWebhooks';
 import { Logger } from '@/Logger';
 import { PermissionChecker } from '@/UserManagement/PermissionChecker';
+import type { Project } from '@/databases/entities/Project';
 
 @Service()
 export class WorkflowExecutionService {
@@ -91,17 +92,16 @@ export class WorkflowExecutionService {
 	}
 
 	async executeManually(
-		{
-			workflowData,
-			runData,
-			pinData,
-			startNodes,
-			destinationNode,
-		}: WorkflowRequest.ManualRunPayload,
+		{ workflowData, runData, startNodes, destinationNode }: WorkflowRequest.ManualRunPayload,
 		user: User,
-		sessionId?: string,
+		pushRef?: string,
 	) {
-		const pinnedTrigger = this.selectPinnedActivatorStarter(workflowData, startNodes, pinData);
+		const pinData = workflowData.pinData;
+		const pinnedTrigger = this.selectPinnedActivatorStarter(
+			workflowData,
+			startNodes?.map((nodeData) => nodeData.name),
+			pinData,
+		);
 
 		// If webhooks nodes exist and are active we have to wait for till we receive a call
 		if (
@@ -118,7 +118,7 @@ export class WorkflowExecutionService {
 				workflowData,
 				additionalData,
 				runData,
-				sessionId,
+				pushRef,
 				destinationNode,
 			);
 
@@ -134,7 +134,7 @@ export class WorkflowExecutionService {
 			executionMode: 'manual',
 			runData,
 			pinData,
-			sessionId,
+			pushRef,
 			startNodes,
 			workflowData,
 			userId: user.id,
@@ -143,7 +143,7 @@ export class WorkflowExecutionService {
 		const hasRunData = (node: INode) => runData !== undefined && !!runData[node.name];
 
 		if (pinnedTrigger && !hasRunData(pinnedTrigger)) {
-			data.startNodes = [pinnedTrigger.name];
+			data.startNodes = [{ name: pinnedTrigger.name, sourceData: null }];
 		}
 
 		const executionId = await this.workflowRunner.run(data);
@@ -157,7 +157,7 @@ export class WorkflowExecutionService {
 	async executeErrorWorkflow(
 		workflowId: string,
 		workflowErrorData: IWorkflowErrorData,
-		runningUser: User,
+		runningProject: Project,
 	): Promise<void> {
 		// Wrap everything in try/catch to make sure that no errors bubble up and all get caught here
 		try {
@@ -280,7 +280,7 @@ export class WorkflowExecutionService {
 				executionMode,
 				executionData: runExecutionData,
 				workflowData,
-				userId: runningUser.id,
+				projectId: runningProject.id,
 			};
 
 			await this.workflowRunner.run(runData);

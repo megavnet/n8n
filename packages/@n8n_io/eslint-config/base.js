@@ -39,6 +39,9 @@ const config = (module.exports = {
 
 		/** https://github.com/sindresorhus/eslint-plugin-unicorn */
 		'eslint-plugin-unicorn',
+
+		/** https://github.com/wix-incubator/eslint-plugin-lodash */
+		'eslint-plugin-lodash',
 	],
 
 	extends: [
@@ -358,7 +361,7 @@ const config = (module.exports = {
 		/**
 		 * https://github.com/import-js/eslint-plugin-import/blob/main/docs/rules/no-unresolved.md
 		 */
-		'import/no-unresolved': 'error',
+		'import/no-unresolved': ['error', { ignore: ['^virtual:'] }],
 
 		/**
 		 * https://github.com/import-js/eslint-plugin-import/blob/master/docs/rules/order.md
@@ -458,11 +461,13 @@ const config = (module.exports = {
 
 		/** https://github.com/sindresorhus/eslint-plugin-unicorn/blob/main/docs/rules/no-useless-promise-resolve-reject.md */
 		'unicorn/no-useless-promise-resolve-reject': 'error',
+
+		'lodash/path-style': ['error', 'as-needed'],
 	},
 
 	overrides: [
 		{
-			files: ['test/**/*.ts', '**/__tests__/*.ts'],
+			files: ['test/**/*.ts', '**/__tests__/*.ts', '**/*.cy.ts'],
 			rules: {
 				'n8n-local-rules/no-plain-errors': 'off',
 				'n8n-local-rules/no-skipped-tests':

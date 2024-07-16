@@ -15,7 +15,7 @@ const BASE_STYLING = {
 	fontFamily: "Menlo, Consolas, 'DejaVu Sans Mono', monospace !important",
 	maxHeight: '400px',
 	tooltip: {
-		maxWidth: '300px',
+		maxWidth: '250px',
 		lineHeight: '1.3em',
 	},
 	diagnosticButton: {
@@ -53,7 +53,7 @@ export const codeNodeEditorTheme = ({
 		},
 		'.cm-content': {
 			fontFamily: BASE_STYLING.fontFamily,
-			caretColor: 'var(--color-code-caret)',
+			caretColor: isReadOnly ? 'transparent' : 'var(--color-code-caret)',
 		},
 		'.cm-cursor, .cm-dropCursor': {
 			borderLeftColor: 'var(--color-code-caret)',
@@ -161,7 +161,7 @@ export const codeNodeEditorTheme = ({
 					{ tag: [tags.processingInstruction, tags.string, tags.inserted], color: '#98c379' },
 					{ tag: tags.invalid, color: 'red', 'font-weight': 'bold' },
 				]),
-		  )
+			)
 		: syntaxHighlighting(
 				HighlightStyle.define([
 					{
@@ -204,5 +204,5 @@ export const codeNodeEditorTheme = ({
 						color: 'var(--color-code-tags-definition)',
 					},
 				]),
-		  ),
+			),
 ];

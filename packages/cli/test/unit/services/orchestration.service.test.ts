@@ -2,7 +2,7 @@ import Container from 'typedi';
 import config from '@/config';
 import { OrchestrationService } from '@/services/orchestration.service';
 import type { RedisServiceWorkerResponseObject } from '@/services/redis/RedisServiceCommands';
-import { MessageEventBus } from '@/eventbus';
+import { MessageEventBus } from '@/eventbus/MessageEventBus/MessageEventBus';
 import { RedisService } from '@/services/redis.service';
 import { handleWorkerResponseMessageMain } from '@/services/orchestration/main/handleWorkerResponseMessageMain';
 import { handleCommandMessageMain } from '@/services/orchestration/main/handleCommandMessageMain';
@@ -11,12 +11,20 @@ import * as helpers from '@/services/orchestration/helpers';
 import { ExternalSecretsManager } from '@/ExternalSecrets/ExternalSecretsManager.ee';
 import { Logger } from '@/Logger';
 import { Push } from '@/push';
-import { ActiveWorkflowRunner } from '@/ActiveWorkflowRunner';
+import { ActiveWorkflowManager } from '@/ActiveWorkflowManager';
 import { mockInstance } from '../../shared/mocking';
+import type { WorkflowActivateMode } from 'n8n-workflow';
+import { RedisClientService } from '@/services/redis/redis-client.service';
+import type Redis from 'ioredis';
+import { mock } from 'jest-mock-extended';
+
+const redisClientService = mockInstance(RedisClientService);
+const mockRedisClient = mock<Redis>();
+redisClientService.createClient.mockReturnValue(mockRedisClient);
 
 const os = Container.get(OrchestrationService);
 const handler = Container.get(OrchestrationHandlerMainService);
-mockInstance(ActiveWorkflowRunner);
+mockInstance(ActiveWorkflowManager);
 
 let queueModeId: string;
 
@@ -42,20 +50,6 @@ describe('Orchestration Service', () => {
 	const eventBus = mockInstance(MessageEventBus);
 
 	beforeAll(async () => {
-		jest.mock('ioredis', () => {
-			const Redis = require('ioredis-mock');
-			if (typeof Redis === 'object') {
-				// the first mock is an ioredis shim because ioredis-mock depends on it
-				// https://github.com/stipsan/ioredis-mock/blob/master/src/index.js#L101-L111
-				return {
-					Command: { _transformer: { argument: {}, reply: {} } },
-				};
-			}
-			// second mock for our code
-			return function (...args: any) {
-				return new Redis(args);
-			};
-		});
 		jest.mock('@/services/redis/RedisServicePubSubPublisher', () => {
 			return jest.fn().mockImplementation(() => {
 				return {
@@ -148,5 +142,39 @@ describe('Orchestration Service', () => {
 		expect(helpers.debounceMessageReceiver).toHaveBeenCalledTimes(2);
 		expect(res1!.payload).toBeUndefined();
 		expect(res2!.payload!.result).toEqual('debounced');
+	});
+
+	describe('shouldAddWebhooks', () => {
+		beforeEach(() => {
+			config.set('multiMainSetup.instanceType', 'leader');
+		});
+		test('should return true for init', () => {
+			// We want to ensure that webhooks are populated on init
+			// more https://github.com/n8n-io/n8n/pull/8830
+			const result = os.shouldAddWebhooks('init');
+			expect(result).toBe(true);
+		});
+
+		test('should return false for leadershipChange', () => {
+			const result = os.shouldAddWebhooks('leadershipChange');
+			expect(result).toBe(false);
+		});
+
+		test('should return true for update or activate when is leader', () => {
+			const modes = ['update', 'activate'] as WorkflowActivateMode[];
+			for (const mode of modes) {
+				const result = os.shouldAddWebhooks(mode);
+				expect(result).toBe(true);
+			}
+		});
+
+		test('should return false for update or activate when not leader', () => {
+			config.set('multiMainSetup.instanceType', 'follower');
+			const modes = ['update', 'activate'] as WorkflowActivateMode[];
+			for (const mode of modes) {
+				const result = os.shouldAddWebhooks(mode);
+				expect(result).toBe(false);
+			}
+		});
 	});
 });

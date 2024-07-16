@@ -1,11 +1,12 @@
 import nock from 'nock';
+import type { IHttpRequestMethods } from 'n8n-workflow';
 import { equalityTest, setup, workflowToTests } from '@test/nodes/Helpers';
 
 jest.mock('../../../../v2/transport', () => {
 	const originalModule = jest.requireActual('../../../../v2/transport');
 	return {
 		...originalModule,
-		microsoftApiRequest: jest.fn(async function (method: string, resource: string) {
+		microsoftApiRequest: jest.fn(async function (method: IHttpRequestMethods, resource: string) {
 			if (method === 'GET' && resource.includes('usedRange')) {
 				return {
 					address: 'Sheet4!A1:D6',

@@ -15,8 +15,10 @@ import type {
 } from 'n8n-workflow';
 import {
 	ApplicationError,
+	ErrorReporterProxy as ErrorReporter,
 	LoggerProxy as Logger,
 	toCronExpression,
+	TriggerCloseError,
 	WorkflowActivationError,
 	WorkflowDeactivationError,
 } from 'n8n-workflow';
@@ -83,6 +85,7 @@ export class ActiveWorkflows {
 				if (triggerResponse !== undefined) {
 					// If a response was given save it
 
+					// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
 					this.activeWorkflows[workflowId].triggerResponses!.push(triggerResponse);
 				}
 			} catch (e) {
@@ -103,6 +106,7 @@ export class ActiveWorkflows {
 
 		for (const pollNode of pollingNodes) {
 			try {
+				// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
 				this.activeWorkflows[workflowId].pollResponses!.push(
 					await this.activatePolling(
 						pollNode,
@@ -179,7 +183,7 @@ export class ActiveWorkflows {
 			const cronTimeParts = cronTime.split(' ');
 			if (cronTimeParts.length > 0 && cronTimeParts[0].includes('*')) {
 				throw new ApplicationError(
-					'The polling interval is too short. It has to be at least a minute!',
+					'The polling interval is too short. It has to be at least a minute.',
 				);
 			}
 
@@ -238,6 +242,14 @@ export class ActiveWorkflows {
 		try {
 			await response.closeFunction();
 		} catch (e) {
+			if (e instanceof TriggerCloseError) {
+				Logger.error(
+					`There was a problem calling "closeFunction" on "${e.node.name}" in workflow "${workflowId}"`,
+				);
+				ErrorReporter.error(e, { extra: { target, workflowId } });
+				return;
+			}
+
 			const error = e instanceof Error ? e : new Error(`${e}`);
 
 			throw new WorkflowDeactivationError(

@@ -23,21 +23,19 @@ import type {
 	INodeProperties,
 	IUserSettings,
 	IHttpRequestMethods,
+	StartNodeData,
 } from 'n8n-workflow';
 
-import type { ActiveWorkflowRunner } from '@/ActiveWorkflowRunner';
+import type { ActiveWorkflowManager } from '@/ActiveWorkflowManager';
 
 import type { WorkflowExecute } from 'n8n-core';
 
 import type PCancelable from 'p-cancelable';
 
-import type { ChildProcess } from 'child_process';
-
-import type { DatabaseType } from '@db/types';
 import type { AuthProviderType } from '@db/entities/AuthIdentity';
 import type { SharedCredentials } from '@db/entities/SharedCredentials';
 import type { TagEntity } from '@db/entities/TagEntity';
-import type { GlobalRole, User } from '@db/entities/User';
+import type { AssignableRole, GlobalRole, User } from '@db/entities/User';
 import type { CredentialsRepository } from '@db/repositories/credentials.repository';
 import type { SettingsRepository } from '@db/repositories/settings.repository';
 import type { UserRepository } from '@db/repositories/user.repository';
@@ -147,6 +145,7 @@ export interface IExecutionResponse extends IExecutionBase {
 	retryOf?: string;
 	retrySuccessId?: string;
 	workflowData: IWorkflowBase | WorkflowWithSharingsAndCredentials;
+	customData: Record<string, string>;
 }
 
 // Flatted data to save memory when saving in database or transferring
@@ -160,6 +159,7 @@ export interface IExecutionFlattedDb extends IExecutionBase {
 	id: string;
 	data: string;
 	workflowData: Omit<IWorkflowBase, 'pinData'>;
+	customData: Record<string, string>;
 }
 
 export interface IExecutionFlattedResponse extends IExecutionFlatted {
@@ -173,7 +173,7 @@ export interface IExecutionsListResponse {
 	estimated: boolean;
 }
 
-export interface IExecutionsStopData {
+export interface ExecutionStopResult {
 	finished?: boolean;
 	mode: WorkflowExecuteMode;
 	startedAt: Date;
@@ -187,12 +187,11 @@ export interface IExecutionsCurrentSummary {
 	startedAt: Date;
 	mode: WorkflowExecuteMode;
 	workflowId: string;
-	status?: ExecutionStatus;
+	status: ExecutionStatus;
 }
 
 export interface IExecutingWorkflowData {
 	executionData: IWorkflowExecutionDataProcess;
-	process?: ChildProcess;
 	startedAt: Date;
 	postExecutePromises: Array<IDeferredPromise<IRun | undefined>>;
 	responsePromise?: IDeferredPromise<IExecuteResponsePromiseData>;
@@ -233,12 +232,10 @@ export interface IExternalHooksFileData {
 
 export interface IExternalHooksFunctions {
 	dbCollections: {
-		/* eslint-disable @typescript-eslint/naming-convention */
 		User: UserRepository;
 		Settings: SettingsRepository;
 		Credentials: CredentialsRepository;
 		Workflow: WorkflowRepository;
-		/* eslint-enable @typescript-eslint/naming-convention */
 	};
 }
 
@@ -268,37 +265,6 @@ export interface IWebhookManager {
 	) => Promise<WebhookAccessControlOptions | undefined>;
 
 	executeWebhook(req: WebhookRequest, res: Response): Promise<IResponseCallbackData>;
-}
-
-export interface IDiagnosticInfo {
-	versionCli: string;
-	databaseType: DatabaseType;
-	notificationsEnabled: boolean;
-	disableProductionWebhooksOnMainProcess: boolean;
-	systemInfo: {
-		os: {
-			type?: string;
-			version?: string;
-		};
-		memory?: number;
-		cpus: {
-			count?: number;
-			model?: string;
-			speed?: number;
-		};
-	};
-	executionVariables: {
-		[key: string]: string | number | boolean | undefined;
-	};
-	deploymentType: string;
-	binaryDataMode: string;
-	smtp_set_up: boolean;
-	ldap_allowed: boolean;
-	saml_enabled: boolean;
-	binary_data_s3: boolean;
-	multi_main_setup_enabled: boolean;
-	licensePlanName?: string;
-	licenseTenantId?: number;
 }
 
 export interface ITelemetryUserDeletionData {
@@ -346,7 +312,6 @@ export type IPushData =
 	| PushDataTestWebhook
 	| PushDataNodeDescriptionUpdated
 	| PushDataExecutionRecovered
-	| PushDataActiveWorkflowUsersChanged
 	| PushDataWorkerStatusMessage
 	| PushDataWorkflowActivated
 	| PushDataWorkflowDeactivated
@@ -365,11 +330,6 @@ type PushDataWorkflowActivated = {
 type PushDataWorkflowDeactivated = {
 	data: IActiveWorkflowChanged;
 	type: 'workflowDeactivated';
-};
-
-type PushDataActiveWorkflowUsersChanged = {
-	data: IActiveWorkflowUsersChanged;
-	type: 'activeWorkflowUsersChanged';
 };
 
 export type PushDataExecutionRecovered = {
@@ -427,18 +387,8 @@ export type PushDataNodeDescriptionUpdated = {
 	type: 'nodeDescriptionUpdated';
 };
 
-export interface IActiveWorkflowUser {
-	user: User;
-	lastSeen: Date;
-}
-
 export interface IActiveWorkflowAdded {
 	workflowId: Workflow['id'];
-}
-
-export interface IActiveWorkflowUsersChanged {
-	workflowId: Workflow['id'];
-	activeUsers: IActiveWorkflowUser[];
 }
 
 interface IActiveWorkflowChanged {
@@ -558,11 +508,6 @@ export interface IWorkflowErrorData {
 	};
 }
 
-export interface IProcessMessageDataHook {
-	hook: string;
-	parameters: any[];
-}
-
 export interface IWorkflowExecutionDataProcess {
 	destinationNode?: string;
 	restartExecutionId?: string;
@@ -571,15 +516,11 @@ export interface IWorkflowExecutionDataProcess {
 	runData?: IRunData;
 	pinData?: IPinData;
 	retryOf?: string;
-	sessionId?: string;
-	startNodes?: string[];
+	pushRef?: string;
+	startNodes?: StartNodeData[];
 	workflowData: IWorkflowBase;
-	userId: string;
-}
-
-export interface IWorkflowExecutionDataProcessWithExecution extends IWorkflowExecutionDataProcess {
-	executionId: string;
-	userId: string;
+	userId?: string;
+	projectId?: string;
 }
 
 export interface IWorkflowExecuteProcess {
@@ -657,18 +598,6 @@ export interface ILicensePostResponse extends ILicenseReadResponse {
 	managementToken: string;
 }
 
-export interface JwtToken {
-	token: string;
-	/** The amount of seconds after which the JWT will expire. **/
-	expiresIn: number;
-}
-
-export interface JwtPayload {
-	id: string;
-	email: string | null;
-	password: string | null;
-}
-
 export interface PublicUser {
 	id: string;
 	email?: string;
@@ -679,7 +608,6 @@ export interface PublicUser {
 	passwordResetToken?: string;
 	createdAt: Date;
 	isPending: boolean;
-	hasRecoveryCodesLeft: boolean;
 	role?: GlobalRole;
 	globalScopes?: Scope[];
 	signInType: AuthProviderType;
@@ -690,11 +618,16 @@ export interface PublicUser {
 	featureFlags?: FeatureFlags;
 }
 
+export interface Invitation {
+	email: string;
+	role: AssignableRole;
+}
+
 export interface N8nApp {
 	app: Application;
 	restEndpoint: string;
 	externalHooks: ExternalHooks;
-	activeWorkflowRunner: ActiveWorkflowRunner;
+	activeWorkflowManager: ActiveWorkflowManager;
 }
 
 export type UserSettings = Pick<User, 'id' | 'settings'>;
@@ -725,7 +658,7 @@ export abstract class SecretsProvider {
 	abstract disconnect(): Promise<void>;
 	abstract update(): Promise<void>;
 	abstract test(): Promise<[boolean] | [boolean, string]>;
-	abstract getSecret(name: string): IDataObject | undefined;
+	abstract getSecret(name: string): unknown;
 	abstract hasSecret(name: string): boolean;
 	abstract getSecretNames(): string[];
 }

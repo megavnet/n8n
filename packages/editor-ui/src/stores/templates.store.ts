@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { STORES } from '@/constants';
+import { STORES, TEMPLATES_URLS } from '@/constants';
 import type {
 	INodeUi,
 	ITemplatesCategory,
@@ -21,6 +21,9 @@ import {
 	getWorkflowTemplate,
 } from '@/api/templates';
 import { getFixedNodesList } from '@/utils/nodeViewUtils';
+import { useRootStore } from '@/stores/root.store';
+import { useUsersStore } from './users.store';
+import { useWorkflowsStore } from './workflows.store';
 
 const TEMPLATES_PAGE_SIZE = 20;
 
@@ -39,6 +42,7 @@ export const useTemplatesStore = defineStore(STORES.TEMPLATES, {
 		workflowSearches: {},
 		currentSessionId: '',
 		previousSessionId: '',
+		currentN8nPath: `${window.location.protocol}//${window.location.host}${window.BASE_PATH}`,
 	}),
 	getters: {
 		allCategories(): ITemplatesCategory[] {
@@ -59,7 +63,7 @@ export const useTemplatesStore = defineStore(STORES.TEMPLATES, {
 			return (id: string): null | ITemplatesCollection => this.collections[id];
 		},
 		getCategoryById() {
-			return (id: string): null | ITemplatesCategory => this.categories[id];
+			return (id: string): null | ITemplatesCategory => this.categories[id as unknown as number];
 		},
 		getSearchedCollections() {
 			return (query: ITemplatesQuery) => {
@@ -107,6 +111,65 @@ export const useTemplatesStore = defineStore(STORES.TEMPLATES, {
 				return Boolean(
 					search && !search.loadingMore && search.totalWorkflows === search.workflowIds.length,
 				);
+			};
+		},
+		hasCustomTemplatesHost(): boolean {
+			const settingsStore = useSettingsStore();
+			return settingsStore.templatesHost !== TEMPLATES_URLS.DEFAULT_API_HOST;
+		},
+		/**
+		 * Constructs URLSearchParams object based on the default parameters for the template repository
+		 * and provided additional parameters
+		 */
+		websiteTemplateRepositoryParameters(_roleOverride?: string) {
+			const rootStore = useRootStore();
+			const userStore = useUsersStore();
+			const workflowsStore = useWorkflowsStore();
+			const defaultParameters: Record<string, string> = {
+				...TEMPLATES_URLS.UTM_QUERY,
+				utm_instance: this.currentN8nPath,
+				utm_n8n_version: rootStore.versionCli,
+				utm_awc: String(workflowsStore.activeWorkflows.length),
+			};
+			const userRole: string | null | undefined =
+				userStore.currentUserCloudInfo?.role ??
+				(userStore.currentUser?.personalizationAnswers &&
+				'role' in userStore.currentUser.personalizationAnswers
+					? userStore.currentUser.personalizationAnswers.role
+					: undefined);
+
+			if (userRole) {
+				defaultParameters.utm_user_role = userRole;
+			}
+			return (additionalParameters: Record<string, string> = {}) => {
+				return new URLSearchParams({
+					...defaultParameters,
+					...additionalParameters,
+				});
+			};
+		},
+		/**
+		 * Construct the URL for the template repository on the website
+		 * @returns {string}
+		 */
+		websiteTemplateRepositoryURL(): string {
+			return `${
+				TEMPLATES_URLS.BASE_WEBSITE_URL
+			}?${this.websiteTemplateRepositoryParameters().toString()}`;
+		},
+		/**
+		 * Construct the URL for the template category page on the website for a given category id
+		 */
+		getWebsiteCategoryURL() {
+			return (id?: string, roleOverride?: string) => {
+				const payload: Record<string, string> = {};
+				if (id) {
+					payload.categories = id;
+				}
+				if (roleOverride) {
+					payload.utm_user_role = roleOverride;
+				}
+				return `${TEMPLATES_URLS.BASE_WEBSITE_URL}/?${this.websiteTemplateRepositoryParameters(payload).toString()}`;
 			};
 		},
 	},

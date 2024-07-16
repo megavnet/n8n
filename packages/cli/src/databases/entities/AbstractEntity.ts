@@ -1,16 +1,17 @@
-import type { ColumnOptions } from 'typeorm';
+import { Container } from 'typedi';
+import { GlobalConfig } from '@n8n/config';
+import type { ColumnOptions } from '@n8n/typeorm';
 import {
 	BeforeInsert,
 	BeforeUpdate,
 	CreateDateColumn,
 	PrimaryColumn,
 	UpdateDateColumn,
-} from 'typeorm';
-import config from '@/config';
+} from '@n8n/typeorm';
 import type { Class } from 'n8n-core';
 import { generateNanoId } from '../utils/generators';
 
-const dbType = config.getEnv('database.type');
+export const { type: dbType } = Container.get(GlobalConfig).database;
 
 const timestampSyntax = {
 	sqlite: "STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')",

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/naming-convention */
 import { Container } from 'typedi';
 import type { Router } from 'express';
 import express from 'express';
@@ -17,6 +16,7 @@ import { InternalHooks } from '@/InternalHooks';
 import { License } from '@/License';
 import { UserRepository } from '@db/repositories/user.repository';
 import { UrlService } from '@/services/url.service';
+import type { AuthenticatedRequest } from '@/requests';
 
 async function createApiRouter(
 	version: string,
@@ -51,7 +51,7 @@ async function createApiRouter(
 		);
 	}
 
-	apiController.get(`/${publicApiEndpoint}/${version}/openapi.yml`, (req, res) => {
+	apiController.get(`/${publicApiEndpoint}/${version}/openapi.yml`, (_, res) => {
 		res.sendFile(openApiSpecPath);
 	});
 
@@ -64,20 +64,17 @@ async function createApiRouter(
 			operationHandlers: handlersDirectory,
 			validateRequests: true,
 			validateApiSpec: true,
-			formats: [
-				{
-					name: 'email',
+			formats: {
+				email: {
 					type: 'string',
 					validate: (email: string) => validator.isEmail(email),
 				},
-				{
-					name: 'identifier',
+				identifier: {
 					type: 'string',
 					validate: (identifier: string) =>
 						validator.isUUID(identifier) || validator.isEmail(identifier),
 				},
-				{
-					name: 'jsonString',
+				jsonString: {
 					validate: (data: string) => {
 						try {
 							JSON.parse(data);
@@ -87,11 +84,11 @@ async function createApiRouter(
 						}
 					},
 				},
-			],
+			},
 			validateSecurity: {
 				handlers: {
 					ApiKeyAuth: async (
-						req: express.Request,
+						req: AuthenticatedRequest,
 						_scopes: unknown,
 						schema: OpenAPIV3.ApiKeySecurityScheme,
 					): Promise<boolean> => {
@@ -155,11 +152,6 @@ export const loadPublicApiVersions = async (
 	};
 };
 
-function isApiEnabledByLicense(): boolean {
-	const license = Container.get(License);
-	return !license.isAPIDisabled();
-}
-
 export function isApiEnabled(): boolean {
-	return !config.get('publicApi.disabled') && isApiEnabledByLicense();
+	return !config.get('publicApi.disabled') && !Container.get(License).isAPIDisabled();
 }

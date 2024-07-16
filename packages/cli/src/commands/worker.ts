@@ -3,33 +3,25 @@ import { Flags, type Config } from '@oclif/core';
 import express from 'express';
 import http from 'http';
 import type PCancelable from 'p-cancelable';
+import { GlobalConfig } from '@n8n/config';
 import { WorkflowExecute } from 'n8n-core';
-import type {
-	ExecutionError,
-	ExecutionStatus,
-	IExecuteResponsePromiseData,
-	INodeTypes,
-	IRun,
-} from 'n8n-workflow';
-import { Workflow, NodeOperationError, sleep, ApplicationError } from 'n8n-workflow';
+import type { ExecutionStatus, IExecuteResponsePromiseData, INodeTypes, IRun } from 'n8n-workflow';
+import { Workflow, sleep, ApplicationError } from 'n8n-workflow';
 
 import * as Db from '@/Db';
 import * as ResponseHelper from '@/ResponseHelper';
 import * as WebhookHelpers from '@/WebhookHelpers';
 import * as WorkflowExecuteAdditionalData from '@/WorkflowExecuteAdditionalData';
-import { PermissionChecker } from '@/UserManagement/PermissionChecker';
 import config from '@/config';
 import type { Job, JobId, JobResponse, WebhookResponse } from '@/Queue';
 import { Queue } from '@/Queue';
-import { generateFailedExecutionFromError } from '@/WorkflowHelpers';
-import { N8N_VERSION } from '@/constants';
+import { N8N_VERSION, inTest } from '@/constants';
 import { ExecutionRepository } from '@db/repositories/execution.repository';
 import { WorkflowRepository } from '@db/repositories/workflow.repository';
-import { OwnershipService } from '@/services/ownership.service';
 import type { ICredentialsOverwrite } from '@/Interfaces';
 import { CredentialsOverwrites } from '@/CredentialsOverwrites';
 import { rawBodyReader, bodyParser } from '@/middlewares';
-import { MessageEventBus } from '@/eventbus';
+import { MessageEventBus } from '@/eventbus/MessageEventBus/MessageEventBus';
 import type { RedisServicePubSubSubscriber } from '@/services/redis/RedisServicePubSubSubscriber';
 import { EventMessageGeneric } from '@/eventbus/EventMessageClasses/EventMessageGeneric';
 import { OrchestrationHandlerWorkerService } from '@/services/orchestration/worker/orchestration.handler.worker.service';
@@ -37,6 +29,8 @@ import { OrchestrationWorkerService } from '@/services/orchestration/worker/orch
 import type { WorkerJobStatusSummary } from '@/services/orchestration/worker/types';
 import { ServiceUnavailableError } from '@/errors/response-errors/service-unavailable.error';
 import { BaseCommand } from './BaseCommand';
+import { MaxStalledCountError } from '@/errors/max-stalled-count.error';
+import { AuditEventRelay } from '@/eventbus/audit-event-relay.service';
 
 export class Worker extends BaseCommand {
 	static description = '\nStarts a n8n worker';
@@ -71,23 +65,20 @@ export class Worker extends BaseCommand {
 	async stopProcess() {
 		this.logger.info('Stopping n8n...');
 
-		// Stop accepting new jobs
-		await Worker.jobQueue.pause(true);
-
 		try {
 			await this.externalHooks?.run('n8n.stop', []);
 
-			const hardStopTime = Date.now() + this.gracefulShutdownTimeoutInS;
+			const hardStopTimeMs = Date.now() + this.gracefulShutdownTimeoutInS * 1000;
 
 			// Wait for active workflow executions to finish
 			let count = 0;
 			while (Object.keys(Worker.runningJobs).length !== 0) {
 				if (count++ % 4 === 0) {
-					const waitLeft = Math.ceil((hardStopTime - Date.now()) / 1000);
+					const waitLeft = Math.ceil((hardStopTimeMs - Date.now()) / 1000);
 					this.logger.info(
 						`Waiting for ${
 							Object.keys(Worker.runningJobs).length
-						} active executions to finish... (wait ${waitLeft} more seconds)`,
+						} active executions to finish... (max wait ${waitLeft} more seconds)`,
 					);
 				}
 
@@ -124,8 +115,6 @@ export class Worker extends BaseCommand {
 			`Start job: ${job.id} (Workflow ID: ${workflowId} | Execution: ${executionId})`,
 		);
 		await executionRepository.updateStatus(executionId, 'running');
-
-		const workflowOwner = await Container.get(OwnershipService).getWorkflowOwnerCached(workflowId);
 
 		let { staticData } = fullExecutionData.workflowData;
 		if (loadStaticData) {
@@ -167,7 +156,7 @@ export class Worker extends BaseCommand {
 		});
 
 		const additionalData = await WorkflowExecuteAdditionalData.getBase(
-			workflowOwner.id,
+			undefined,
 			undefined,
 			executionTimeoutTimestamp,
 		);
@@ -179,20 +168,6 @@ export class Worker extends BaseCommand {
 				retryOf: fullExecutionData.retryOf as string,
 			},
 		);
-
-		try {
-			await Container.get(PermissionChecker).check(workflow, workflowOwner.id);
-		} catch (error) {
-			if (error instanceof NodeOperationError) {
-				const failedExecution = generateFailedExecutionFromError(
-					fullExecutionData.mode,
-					error,
-					error.node,
-				);
-				await additionalData.hooks.executeHookFunctions('workflowExecuteAfter', [failedExecution]);
-			}
-			return { success: true, error: error as ExecutionError };
-		}
 
 		additionalData.hooks.hookFunctions.sendResponse = [
 			async (response: IExecuteResponsePromiseData): Promise<void> => {
@@ -258,7 +233,7 @@ export class Worker extends BaseCommand {
 
 		if (!process.env.N8N_ENCRYPTION_KEY) {
 			throw new ApplicationError(
-				'Missing encryption key. Worker started without the required N8N_ENCRYPTION_KEY env var. More information: https://docs.n8n.io/hosting/environment-variables/configuration-methods/#encryption-key',
+				'Missing encryption key. Worker started without the required N8N_ENCRYPTION_KEY env var. More information: https://docs.n8n.io/hosting/configuration/configuration-examples/encryption-key/',
 			);
 		}
 
@@ -267,9 +242,10 @@ export class Worker extends BaseCommand {
 	}
 
 	async init() {
-		const configuredShutdownTimeout = config.getEnv('queue.bull.gracefulShutdownTimeout');
-		if (configuredShutdownTimeout) {
-			this.gracefulShutdownTimeoutInS = configuredShutdownTimeout;
+		const { QUEUE_WORKER_TIMEOUT } = process.env;
+		if (QUEUE_WORKER_TIMEOUT) {
+			this.gracefulShutdownTimeoutInS =
+				parseInt(QUEUE_WORKER_TIMEOUT, 10) || config.default('queue.bull.gracefulShutdownTimeout');
 			this.logger.warn(
 				'QUEUE_WORKER_TIMEOUT has been deprecated. Rename it to N8N_GRACEFUL_SHUTDOWN_TIMEOUT.',
 			);
@@ -296,7 +272,7 @@ export class Worker extends BaseCommand {
 		await this.initOrchestration();
 		this.logger.debug('Orchestration init complete');
 
-		await Container.get(OrchestrationWorkerService).publishToEventLog(
+		await Container.get(MessageEventBus).send(
 			new EventMessageGeneric({
 				eventName: 'n8n.worker.started',
 				payload: {
@@ -310,6 +286,7 @@ export class Worker extends BaseCommand {
 		await Container.get(MessageEventBus).initialize({
 			workerId: this.queueModeId,
 		});
+		Container.get(AuditEventRelay).init();
 	}
 
 	/**
@@ -340,8 +317,12 @@ export class Worker extends BaseCommand {
 		Worker.jobQueue = Container.get(Queue);
 		await Worker.jobQueue.init();
 		this.logger.debug('Queue singleton ready');
+
+		const envConcurrency = config.getEnv('executions.concurrency.productionLimit');
+		const concurrency = envConcurrency !== -1 ? envConcurrency : flags.concurrency;
+
 		void Worker.jobQueue.process(
-			flags.concurrency,
+			concurrency,
 			async (job) => await this.runJob(job, this.nodeTypes),
 		);
 
@@ -387,6 +368,11 @@ export class Worker extends BaseCommand {
 				process.exit(2);
 			} else {
 				this.logger.error('Error from queue: ', error);
+
+				if (error.message.includes('job stalled more than maxStalledCount')) {
+					throw new MaxStalledCountError(error);
+				}
+
 				throw error;
 			}
 		});
@@ -403,7 +389,7 @@ export class Worker extends BaseCommand {
 		app.get(
 			'/healthz',
 
-			async (req: express.Request, res: express.Response) => {
+			async (_req: express.Request, res: express.Response) => {
 				this.logger.debug('Health check started!');
 
 				const connection = Db.getConnection();
@@ -444,7 +430,9 @@ export class Worker extends BaseCommand {
 		);
 
 		let presetCredentialsLoaded = false;
-		const endpointPresetCredentials = config.getEnv('credentials.overwrite.endpoint');
+
+		const globalConfig = Container.get(GlobalConfig);
+		const endpointPresetCredentials = globalConfig.credentials.overwrite.endpoint;
 		if (endpointPresetCredentials !== '') {
 			// POST endpoint to set preset credentials
 			app.post(
@@ -501,8 +489,18 @@ export class Worker extends BaseCommand {
 			await this.setupHealthMonitor();
 		}
 
+		if (process.stdout.isTTY) {
+			process.stdin.setRawMode(true);
+			process.stdin.resume();
+			process.stdin.setEncoding('utf8');
+
+			process.stdin.on('data', (key: string) => {
+				if (key.charCodeAt(0) === 3) process.kill(process.pid, 'SIGINT'); // ctrl+c
+			});
+		}
+
 		// Make sure that the process does not close
-		await new Promise(() => {});
+		if (!inTest) await new Promise(() => {});
 	}
 
 	async catch(error: Error) {

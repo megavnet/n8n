@@ -72,8 +72,9 @@ const alias = [
 const plugins = [
 	icons({
 		compiler: 'vue3',
+		autoInstall: true,
 	}),
-	vue()
+	vue(),
 ];
 
 const { SENTRY_AUTH_TOKEN: authToken, RELEASE: release } = process.env;

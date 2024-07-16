@@ -1,4 +1,5 @@
 import nock from 'nock';
+import type { IHttpRequestMethods } from 'n8n-workflow';
 
 import * as upload from '../../../../v2/actions/file/upload.operation';
 
@@ -11,7 +12,7 @@ jest.mock('../../../../v2/transport', () => {
 	const originalModule = jest.requireActual('../../../../v2/transport');
 	return {
 		...originalModule,
-		googleApiRequest: jest.fn(async function (method: string) {
+		googleApiRequest: jest.fn(async function (method: IHttpRequestMethods) {
 			if (method === 'POST') {
 				return {
 					headers: { location: 'someLocation' },

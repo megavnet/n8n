@@ -1,16 +1,18 @@
-import type { SuperAgentTest } from 'supertest';
 import { Container } from 'typedi';
 import validator from 'validator';
+
 import config from '@/config';
 import { AUTH_COOKIE_NAME } from '@/constants';
 import type { User } from '@db/entities/User';
+import { UserRepository } from '@db/repositories/user.repository';
+import { MfaService } from '@/Mfa/mfa.service';
+
 import { LOGGED_OUT_RESPONSE_BODY } from './shared/constants';
 import { randomValidPassword } from './shared/random';
 import * as testDb from './shared/testDb';
 import * as utils from './shared/utils/';
 import { createUser, createUserShell } from './shared/db/users';
-import { UserRepository } from '@db/repositories/user.repository';
-import { MfaService } from '@/Mfa/mfa.service';
+import type { SuperAgentTest } from './shared/types';
 
 let owner: User;
 let authOwnerAgent: SuperAgentTest;
@@ -155,18 +157,6 @@ describe('GET /login', () => {
 
 		const authToken = utils.getAuthToken(response);
 		expect(authToken).toBeUndefined();
-	});
-
-	test('should return cookie if UM is disabled and no cookie is already set', async () => {
-		await createUserShell('global:owner');
-		await utils.setInstanceOwnerSetUp(false);
-
-		const response = await testServer.authlessAgent.get('/login');
-
-		expect(response.statusCode).toBe(200);
-
-		const authToken = utils.getAuthToken(response);
-		expect(authToken).toBeDefined();
 	});
 
 	test('should return 401 Unauthorized if invalid cookie', async () => {
@@ -380,7 +370,8 @@ describe('GET /resolve-signup-token', () => {
 			.query({ inviteeId });
 
 		// cause inconsistent DB state
-		await Container.get(UserRepository).update(owner.id, { email: '' });
+		owner.email = '';
+		await Container.get(UserRepository).save(owner);
 		const fifth = await authOwnerAgent
 			.get('/resolve-signup-token')
 			.query({ inviterId: owner.id })

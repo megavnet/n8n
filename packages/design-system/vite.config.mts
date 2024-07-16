@@ -18,7 +18,7 @@ export const vitestConfig = defineVitestConfig({
 						reporter: process.env.CI === 'true' ? 'cobertura' : 'text-summary',
 						all: true,
 					},
-			  }
+				}
 			: {}),
 		css: {
 			modules: {
@@ -35,6 +35,7 @@ export default mergeConfig(
 			alias: {
 				'@': resolve(__dirname, 'src'),
 				'n8n-design-system': resolve(__dirname, 'src'),
+				lodash: 'lodash-es',
 			},
 		},
 		build: {

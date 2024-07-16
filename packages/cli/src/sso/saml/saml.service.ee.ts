@@ -287,13 +287,18 @@ export class SamlService {
 		let result: Settings;
 		if (samlPreferences) {
 			samlPreferences.value = settingsValue;
-			result = await Container.get(SettingsRepository).save(samlPreferences);
-		} else {
-			result = await Container.get(SettingsRepository).save({
-				key: SAML_PREFERENCES_DB_KEY,
-				value: settingsValue,
-				loadOnStartup: true,
+			result = await Container.get(SettingsRepository).save(samlPreferences, {
+				transaction: false,
 			});
+		} else {
+			result = await Container.get(SettingsRepository).save(
+				{
+					key: SAML_PREFERENCES_DB_KEY,
+					value: settingsValue,
+					loadOnStartup: true,
+				},
+				{ transaction: false },
+			);
 		}
 		if (result) return jsonParse<SamlPreferences>(result.value);
 		return;
@@ -344,7 +349,8 @@ export class SamlService {
 		} catch (error) {
 			// throw error;
 			throw new AuthError(
-				`SAML Authentication failed. Could not parse SAML response. ${(error as Error).message}`,
+				// INFO: The error can be a string. Samlify rejects promises with strings.
+				`SAML Authentication failed. Could not parse SAML response. ${error instanceof Error ? error.message : error}`,
 			);
 		}
 		const { attributes, missingAttributes } = getMappedSamlAttributesFromFlowResult(
@@ -354,7 +360,7 @@ export class SamlService {
 		if (!attributes) {
 			throw new AuthError('SAML Authentication failed. Invalid SAML response.');
 		}
-		if (!attributes.email && missingAttributes.length > 0) {
+		if (missingAttributes.length > 0) {
 			throw new AuthError(
 				`SAML Authentication failed. Invalid SAML response (missing attributes: ${missingAttributes.join(
 					', ',

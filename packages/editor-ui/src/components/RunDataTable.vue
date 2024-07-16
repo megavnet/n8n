@@ -1,12 +1,12 @@
 <template>
-	<div :class="$style.dataDisplay">
+	<div :class="[$style.dataDisplay, { [$style.highlight]: highlight }]">
 		<table v-if="tableData.columns && tableData.columns.length === 0" :class="$style.table">
 			<tr>
 				<th :class="$style.emptyCell"></th>
 				<th :class="$style.tableRightMargin"></th>
 			</tr>
 			<tr
-				v-for="(row, index1) in tableData.data"
+				v-for="(_, index1) in tableData.data"
 				:key="index1"
 				:class="{ [$style.hoveringRow]: isHoveringRow(index1) }"
 			>
@@ -37,7 +37,7 @@
 								:data="getExpression(column)"
 								:disabled="!mappingEnabled"
 								@dragstart="onDragStart"
-								@dragend="(column) => onDragEnd(column, 'column')"
+								@dragend="(column) => onDragEnd(column?.textContent ?? '', 'column')"
 							>
 								<template #preview="{ canDrop }">
 									<MappingPill :html="shorten(column, 16, 2)" :can-drop="canDrop" />
@@ -187,15 +187,18 @@ export default defineComponent({
 	props: {
 		node: {
 			type: Object as PropType<INodeUi>,
+			required: true,
 		},
 		inputData: {
 			type: Array as PropType<INodeExecutionData[]>,
+			required: true,
 		},
 		mappingEnabled: {
 			type: Boolean,
 		},
 		distanceFromActive: {
 			type: Number,
+			required: true,
 		},
 		runIndex: {
 			type: Number,
@@ -208,6 +211,7 @@ export default defineComponent({
 		},
 		pageOffset: {
 			type: Number,
+			required: true,
 		},
 		hasDefaultHoverState: {
 			type: Boolean,
@@ -237,7 +241,7 @@ export default defineComponent({
 	},
 	mounted() {
 		if (this.tableData && this.tableData.columns && this.$refs.draggable) {
-			const tbody = (this.$refs.draggable as DraggableRef).$refs.wrapper;
+			const tbody = (this.$refs.draggable as DraggableRef).$refs.wrapper as HTMLElement;
 			if (tbody) {
 				this.$emit('mounted', {
 					avgRowHeight: tbody.offsetHeight / this.tableData.data.length,
@@ -259,6 +263,9 @@ export default defineComponent({
 		focusedMappableInput(): string {
 			return this.ndvStore.focusedMappableInput;
 		},
+		highlight(): boolean {
+			return this.ndvStore.highlightDraggables;
+		},
 	},
 	methods: {
 		shorten,
@@ -277,7 +284,7 @@ export default defineComponent({
 				return true;
 			}
 			const itemNodeId = getPairedItemId(
-				this.node.name,
+				this.node?.name ?? '',
 				this.runIndex || 0,
 				this.outputIndex || 0,
 				itemIndex,
@@ -338,7 +345,7 @@ export default defineComponent({
 				path: [column],
 			});
 		},
-		getPathNameFromTarget(el: HTMLElement) {
+		getPathNameFromTarget(el?: HTMLElement) {
 			if (!el) {
 				return '';
 			}
@@ -381,7 +388,7 @@ export default defineComponent({
 				return this.$locale.baseText('runData.emptyString');
 			}
 			if (typeof value === 'string') {
-				return value.replaceAll('\n', '\\n');
+				return value;
 			}
 			if (Array.isArray(value) && value.length === 0) {
 				return this.$locale.baseText('runData.emptyArray');
@@ -395,7 +402,7 @@ export default defineComponent({
 			if (value === true || value === false || typeof value === 'number') {
 				return value.toString();
 			}
-			return value;
+			return JSON.stringify(value);
 		},
 		onDragStart() {
 			this.draggedColumn = true;
@@ -438,7 +445,9 @@ export default defineComponent({
 
 				void this.externalHooks.run('runDataTable.onDragEnd', telemetryPayload);
 
-				this.$telemetry.track('User dragged data for mapping', telemetryPayload);
+				this.$telemetry.track('User dragged data for mapping', telemetryPayload, {
+					withPostHog: true,
+				});
 			}, 1000); // ensure dest data gets set if drop
 		},
 		isSimple(data: unknown): boolean {
@@ -579,6 +588,7 @@ export default defineComponent({
 		border-left: var(--border-base);
 		overflow-wrap: break-word;
 		white-space: pre-wrap;
+		vertical-align: top;
 	}
 
 	td:first-child,
@@ -642,7 +652,12 @@ export default defineComponent({
 	}
 }
 
+.highlight .draggableHeader {
+	color: var(--color-primary);
+}
+
 .draggingHeader {
+	color: var(--color-primary);
 	background-color: var(--color-primary-tint-2);
 }
 

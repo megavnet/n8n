@@ -6,6 +6,7 @@ import type {
 	INodeTypeBaseDescription,
 	INodeTypeDescription,
 } from 'n8n-workflow';
+import { ENABLE_LESS_STRICT_TYPE_VALIDATION } from '../../../utils/constants';
 
 export class IfV2 implements INodeType {
 	description: INodeTypeDescription;
@@ -21,6 +22,7 @@ export class IfV2 implements INodeType {
 			inputs: ['main'],
 			outputs: ['main', 'main'],
 			outputNames: ['true', 'false'],
+			parameterPane: 'wide',
 			properties: [
 				{
 					displayName: 'Conditions',
@@ -78,13 +80,11 @@ export class IfV2 implements INodeType {
 						extractValue: true,
 					}) as boolean;
 				} catch (error) {
-					if (!options.looseTypeValidation) {
-						set(
-							error,
-							'description',
-							"Try to change the operator, switch ON the option 'Less Strict Type Validation', or change the type with an expression",
-						);
+					if (!options.looseTypeValidation && !error.description) {
+						set(error, 'description', ENABLE_LESS_STRICT_TYPE_VALIDATION);
 					}
+					set(error, 'context.itemIndex', itemIndex);
+					set(error, 'node', this.getNode());
 					throw error;
 				}
 
@@ -98,7 +98,7 @@ export class IfV2 implements INodeType {
 					falseItems.push(item);
 				}
 			} catch (error) {
-				if (this.continueOnFail()) {
+				if (this.continueOnFail(error)) {
 					falseItems.push(item);
 				} else {
 					throw error;

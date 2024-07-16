@@ -2,8 +2,6 @@ import type WebSocket from 'ws';
 import { Service } from 'typedi';
 import { Logger } from '@/Logger';
 import { AbstractPush } from './abstract.push';
-import type { User } from '@db/entities/User';
-import { OrchestrationService } from '@/services/orchestration.service';
 
 function heartbeat(this: WebSocket) {
 	this.isAlive = true;
@@ -11,41 +9,24 @@ function heartbeat(this: WebSocket) {
 
 @Service()
 export class WebSocketPush extends AbstractPush<WebSocket> {
-	constructor(logger: Logger, orchestrationService: OrchestrationService) {
-		super(logger, orchestrationService);
+	constructor(logger: Logger) {
+		super(logger);
 
 		// Ping all connected clients every 60 seconds
 		setInterval(() => this.pingAll(), 60 * 1000);
 	}
 
-	add(sessionId: string, userId: User['id'], connection: WebSocket) {
+	add(pushRef: string, connection: WebSocket) {
 		connection.isAlive = true;
 		connection.on('pong', heartbeat);
 
-		super.add(sessionId, userId, connection);
-
-		const onMessage = (data: WebSocket.RawData) => {
-			try {
-				const buffer = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
-
-				this.onMessageReceived(sessionId, JSON.parse(buffer.toString('utf8')));
-			} catch (error) {
-				this.logger.error("Couldn't parse message from editor-UI", {
-					error: error as unknown,
-					sessionId,
-					data,
-				});
-			}
-		};
+		super.add(pushRef, connection);
 
 		// Makes sure to remove the session if the connection is closed
 		connection.once('close', () => {
 			connection.off('pong', heartbeat);
-			connection.off('message', onMessage);
-			this.remove(sessionId);
+			this.remove(pushRef);
 		});
-
-		connection.on('message', onMessage);
 	}
 
 	protected close(connection: WebSocket): void {
@@ -57,11 +38,11 @@ export class WebSocketPush extends AbstractPush<WebSocket> {
 	}
 
 	private pingAll() {
-		for (const sessionId in this.connections) {
-			const connection = this.connections[sessionId];
+		for (const pushRef in this.connections) {
+			const connection = this.connections[pushRef];
 			// If a connection did not respond with a `PONG` in the last 60 seconds, disconnect
 			if (!connection.isAlive) {
-				delete this.connections[sessionId];
+				delete this.connections[pushRef];
 				return connection.terminate();
 			}
 

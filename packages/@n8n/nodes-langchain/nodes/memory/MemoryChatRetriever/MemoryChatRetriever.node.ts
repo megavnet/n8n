@@ -7,8 +7,8 @@ import {
 	type INodeType,
 	type INodeTypeDescription,
 } from 'n8n-workflow';
-import type { BaseChatMemory } from 'langchain/memory';
-import type { BaseMessage } from 'langchain/schema';
+import type { BaseChatMemory } from '@langchain/community/memory/chat_memory';
+import type { BaseMessage } from '@langchain/core/messages';
 
 function simplifyMessages(messages: BaseMessage[]) {
 	const chunkedMessages = [];
@@ -98,7 +98,7 @@ export class MemoryChatRetriever implements INodeType {
 		const messages = await memory?.chatHistory.getMessages();
 
 		if (simplifyOutput && messages) {
-			return await this.prepareOutputData(simplifyMessages(messages));
+			return [simplifyMessages(messages)];
 		}
 
 		const serializedMessages =
@@ -107,6 +107,6 @@ export class MemoryChatRetriever implements INodeType {
 				return { json: serializedMessage as unknown as IDataObject };
 			}) ?? [];
 
-		return await this.prepareOutputData(serializedMessages);
+		return [serializedMessages];
 	}
 }

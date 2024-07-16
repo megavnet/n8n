@@ -1,12 +1,15 @@
-import type { SuperAgentTest } from 'supertest';
-import Container from 'typedi';
+import { Container } from 'typedi';
 import type { INode } from 'n8n-workflow';
+
+import config from '@/config';
 import { STARTING_NODES } from '@/constants';
 import type { TagEntity } from '@db/entities/TagEntity';
 import type { User } from '@db/entities/User';
+import type { Project } from '@db/entities/Project';
+import { ProjectRepository } from '@db/repositories/project.repository';
 import { SharedWorkflowRepository } from '@db/repositories/sharedWorkflow.repository';
 import { WorkflowHistoryRepository } from '@db/repositories/workflowHistory.repository';
-import { ActiveWorkflowRunner } from '@/ActiveWorkflowRunner';
+import { ActiveWorkflowManager } from '@/ActiveWorkflowManager';
 import { ExecutionService } from '@/executions/execution.service';
 
 import { randomApiKey } from '../shared/random';
@@ -16,12 +19,18 @@ import { createUser } from '../shared/db/users';
 import { createWorkflow, createWorkflowWithTrigger } from '../shared/db/workflows';
 import { createTag } from '../shared/db/tags';
 import { mockInstance } from '../../shared/mocking';
+import type { SuperAgentTest } from '../shared/types';
+import { Telemetry } from '@/telemetry';
+
+mockInstance(Telemetry);
 
 let owner: User;
+let ownerPersonalProject: Project;
 let member: User;
+let memberPersonalProject: Project;
 let authOwnerAgent: SuperAgentTest;
 let authMemberAgent: SuperAgentTest;
-let workflowRunner: ActiveWorkflowRunner;
+let activeWorkflowManager: ActiveWorkflowManager;
 
 const testServer = utils.setupTestServer({ endpointGroups: ['publicApi'] });
 const license = testServer.license;
@@ -33,17 +42,23 @@ beforeAll(async () => {
 		role: 'global:owner',
 		apiKey: randomApiKey(),
 	});
+	ownerPersonalProject = await Container.get(ProjectRepository).getPersonalProjectForUserOrFail(
+		owner.id,
+	);
 
 	member = await createUser({
 		role: 'global:member',
 		apiKey: randomApiKey(),
 	});
+	memberPersonalProject = await Container.get(ProjectRepository).getPersonalProjectForUserOrFail(
+		member.id,
+	);
 
 	await utils.initNodeTypes();
 
-	workflowRunner = Container.get(ActiveWorkflowRunner);
+	activeWorkflowManager = Container.get(ActiveWorkflowManager);
 
-	await workflowRunner.init();
+	await activeWorkflowManager.init();
 });
 
 beforeEach(async () => {
@@ -61,7 +76,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-	await workflowRunner?.removeAll();
+	await activeWorkflowManager?.removeAll();
 });
 
 const testWithAPIKey =
@@ -248,6 +263,41 @@ describe('GET /workflows', () => {
 				expect(tags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
 			});
 		}
+	});
+
+	test('should return all owned workflows filtered by name', async () => {
+		const workflowName = 'Workflow 1';
+
+		await Promise.all([createWorkflow({ name: workflowName }, member), createWorkflow({}, member)]);
+
+		const response = await authMemberAgent.get(`/workflows?name=${workflowName}`);
+
+		expect(response.statusCode).toBe(200);
+		expect(response.body.data.length).toBe(1);
+
+		const {
+			id,
+			connections,
+			active,
+			staticData,
+			nodes,
+			settings,
+			name,
+			createdAt,
+			updatedAt,
+			tags,
+		} = response.body.data[0];
+
+		expect(id).toBeDefined();
+		expect(name).toBe(workflowName);
+		expect(connections).toBeDefined();
+		expect(active).toBe(false);
+		expect(staticData).toBeDefined();
+		expect(nodes).toBeDefined();
+		expect(settings).toBeDefined();
+		expect(createdAt).toBeDefined();
+		expect(updatedAt).toBeDefined();
+		expect(tags).toEqual([]);
 	});
 
 	test('should return all workflows for owner', async () => {
@@ -470,7 +520,7 @@ describe('POST /workflows/:id/activate', () => {
 		// check whether the workflow is on the database
 		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: member.id,
+				projectId: memberPersonalProject.id,
 				workflowId: workflow.id,
 			},
 			relations: ['workflow'],
@@ -479,15 +529,13 @@ describe('POST /workflows/:id/activate', () => {
 		expect(sharedWorkflow?.workflow.active).toBe(true);
 
 		// check whether the workflow is on the active workflow runner
-		expect(await workflowRunner.isActive(workflow.id)).toBe(true);
+		expect(await activeWorkflowManager.isActive(workflow.id)).toBe(true);
 	});
 
 	test('should set non-owned workflow as active when owner', async () => {
 		const workflow = await createWorkflowWithTrigger({}, member);
 
-		const response = await authMemberAgent.post(`/workflows/${workflow.id}/activate`);
-
-		expect(response.statusCode).toBe(200);
+		const response = await authMemberAgent.post(`/workflows/${workflow.id}/activate`).expect(200);
 
 		const { id, connections, active, staticData, nodes, settings, name, createdAt, updatedAt } =
 			response.body;
@@ -505,7 +553,7 @@ describe('POST /workflows/:id/activate', () => {
 		// check whether the workflow is on the database
 		const sharedOwnerWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: owner.id,
+				projectId: ownerPersonalProject.id,
 				workflowId: workflow.id,
 			},
 		});
@@ -514,7 +562,7 @@ describe('POST /workflows/:id/activate', () => {
 
 		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: member.id,
+				projectId: memberPersonalProject.id,
 				workflowId: workflow.id,
 			},
 			relations: ['workflow'],
@@ -523,7 +571,7 @@ describe('POST /workflows/:id/activate', () => {
 		expect(sharedWorkflow?.workflow.active).toBe(true);
 
 		// check whether the workflow is on the active workflow runner
-		expect(await workflowRunner.isActive(workflow.id)).toBe(true);
+		expect(await activeWorkflowManager.isActive(workflow.id)).toBe(true);
 	});
 });
 
@@ -568,7 +616,7 @@ describe('POST /workflows/:id/deactivate', () => {
 		// get the workflow after it was deactivated
 		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: member.id,
+				projectId: memberPersonalProject.id,
 				workflowId: workflow.id,
 			},
 			relations: ['workflow'],
@@ -577,7 +625,7 @@ describe('POST /workflows/:id/deactivate', () => {
 		// check whether the workflow is deactivated in the database
 		expect(sharedWorkflow?.workflow.active).toBe(false);
 
-		expect(await workflowRunner.isActive(workflow.id)).toBe(false);
+		expect(await activeWorkflowManager.isActive(workflow.id)).toBe(false);
 	});
 
 	test('should deactivate non-owned workflow when owner', async () => {
@@ -605,7 +653,7 @@ describe('POST /workflows/:id/deactivate', () => {
 		// check whether the workflow is deactivated in the database
 		const sharedOwnerWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: owner.id,
+				projectId: ownerPersonalProject.id,
 				workflowId: workflow.id,
 			},
 		});
@@ -614,7 +662,7 @@ describe('POST /workflows/:id/deactivate', () => {
 
 		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: member.id,
+				projectId: memberPersonalProject.id,
 				workflowId: workflow.id,
 			},
 			relations: ['workflow'],
@@ -622,7 +670,7 @@ describe('POST /workflows/:id/deactivate', () => {
 
 		expect(sharedWorkflow?.workflow.active).toBe(false);
 
-		expect(await workflowRunner.isActive(workflow.id)).toBe(false);
+		expect(await activeWorkflowManager.isActive(workflow.id)).toBe(false);
 	});
 });
 
@@ -658,6 +706,7 @@ describe('POST /workflows', () => {
 				saveDataSuccessExecution: 'all',
 				executionTimeout: 3600,
 				timezone: 'America/New_York',
+				executionOrder: 'v1',
 			},
 		};
 
@@ -681,7 +730,7 @@ describe('POST /workflows', () => {
 		// check if created workflow in DB
 		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: member.id,
+				projectId: memberPersonalProject.id,
 				workflowId: response.body.id,
 			},
 			relations: ['workflow'],
@@ -920,7 +969,7 @@ describe('PUT /workflows/:id', () => {
 		// check updated workflow in DB
 		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: member.id,
+				projectId: memberPersonalProject.id,
 				workflowId: response.body.id,
 			},
 			relations: ['workflow'],
@@ -1089,7 +1138,7 @@ describe('PUT /workflows/:id', () => {
 		// check updated workflow in DB
 		const sharedOwnerWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: owner.id,
+				projectId: ownerPersonalProject.id,
 				workflowId: response.body.id,
 			},
 		});
@@ -1098,7 +1147,7 @@ describe('PUT /workflows/:id', () => {
 
 		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
 			where: {
-				userId: member.id,
+				projectId: memberPersonalProject.id,
 				workflowId: response.body.id,
 			},
 			relations: ['workflow'],
@@ -1109,5 +1158,310 @@ describe('PUT /workflows/:id', () => {
 			workflow.updatedAt.getTime(),
 		);
 		expect(sharedWorkflow?.role).toEqual('workflow:owner');
+	});
+});
+
+describe('GET /workflows/:id/tags', () => {
+	test('should fail due to missing API Key', testWithAPIKey('get', '/workflows/2/tags', null));
+
+	test('should fail due to invalid API Key', testWithAPIKey('get', '/workflows/2/tags', 'abcXYZ'));
+
+	test('should fail if workflowTagsDisabled', async () => {
+		config.set('workflowTagsDisabled', true);
+
+		const response = await authOwnerAgent.get('/workflows/2/tags');
+
+		expect(response.statusCode).toBe(400);
+		expect(response.body.message).toBe('Workflow Tags Disabled');
+	});
+
+	test('should fail due to non-existing workflow', async () => {
+		config.set('workflowTagsDisabled', false);
+
+		const response = await authOwnerAgent.get('/workflows/2/tags');
+
+		expect(response.statusCode).toBe(404);
+	});
+
+	test('should return all tags of owned workflow', async () => {
+		config.set('workflowTagsDisabled', false);
+
+		const tags = await Promise.all([await createTag({}), await createTag({})]);
+
+		const workflow = await createWorkflow({ tags }, member);
+
+		const response = await authMemberAgent.get(`/workflows/${workflow.id}/tags`);
+
+		expect(response.statusCode).toBe(200);
+		expect(response.body.length).toBe(2);
+
+		for (const tag of response.body) {
+			const { id, name, createdAt, updatedAt } = tag;
+
+			expect(id).toBeDefined();
+			expect(name).toBeDefined();
+			expect(createdAt).toBeDefined();
+			expect(updatedAt).toBeDefined();
+
+			tags.forEach((tag: TagEntity) => {
+				expect(tags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+			});
+		}
+	});
+
+	test('should return empty array if workflow does not have tags', async () => {
+		config.set('workflowTagsDisabled', false);
+
+		const workflow = await createWorkflow({}, member);
+
+		const response = await authMemberAgent.get(`/workflows/${workflow.id}/tags`);
+
+		expect(response.statusCode).toBe(200);
+		expect(response.body.length).toBe(0);
+	});
+});
+
+describe('PUT /workflows/:id/tags', () => {
+	test('should fail due to missing API Key', testWithAPIKey('put', '/workflows/2/tags', null));
+
+	test('should fail due to invalid API Key', testWithAPIKey('put', '/workflows/2/tags', 'abcXYZ'));
+
+	test('should fail if workflowTagsDisabled', async () => {
+		config.set('workflowTagsDisabled', true);
+
+		const response = await authOwnerAgent.put('/workflows/2/tags').send([]);
+
+		expect(response.statusCode).toBe(400);
+		expect(response.body.message).toBe('Workflow Tags Disabled');
+	});
+
+	test('should fail due to non-existing workflow', async () => {
+		config.set('workflowTagsDisabled', false);
+
+		const response = await authOwnerAgent.put('/workflows/2/tags').send([]);
+
+		expect(response.statusCode).toBe(404);
+	});
+
+	test('should add the tags, workflow have not got tags previously', async () => {
+		config.set('workflowTagsDisabled', false);
+
+		const workflow = await createWorkflow({}, member);
+		const tags = await Promise.all([await createTag({}), await createTag({})]);
+
+		const payload = [
+			{
+				id: tags[0].id,
+			},
+			{
+				id: tags[1].id,
+			},
+		];
+
+		const response = await authMemberAgent.put(`/workflows/${workflow.id}/tags`).send(payload);
+
+		expect(response.statusCode).toBe(200);
+		expect(response.body.length).toBe(2);
+
+		for (const tag of response.body) {
+			const { id, name, createdAt, updatedAt } = tag;
+
+			expect(id).toBeDefined();
+			expect(name).toBeDefined();
+			expect(createdAt).toBeDefined();
+			expect(updatedAt).toBeDefined();
+
+			tags.forEach((tag: TagEntity) => {
+				expect(tags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+			});
+		}
+
+		// Check the association in DB
+		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
+			where: {
+				projectId: memberPersonalProject.id,
+				workflowId: workflow.id,
+			},
+			relations: ['workflow.tags'],
+		});
+
+		expect(sharedWorkflow?.workflow.tags).toBeDefined();
+		expect(sharedWorkflow?.workflow.tags?.length).toBe(2);
+		if (sharedWorkflow?.workflow.tags !== undefined) {
+			for (const tag of sharedWorkflow?.workflow.tags) {
+				const { id, name, createdAt, updatedAt } = tag;
+
+				expect(id).toBeDefined();
+				expect(name).toBeDefined();
+				expect(createdAt).toBeDefined();
+				expect(updatedAt).toBeDefined();
+
+				tags.forEach((tag: TagEntity) => {
+					expect(tags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+				});
+			}
+		}
+	});
+
+	test('should add the tags, workflow have some tags previously', async () => {
+		config.set('workflowTagsDisabled', false);
+
+		const tags = await Promise.all([await createTag({}), await createTag({}), await createTag({})]);
+		const oldTags = [tags[0], tags[1]];
+		const newTags = [tags[0], tags[2]];
+		const workflow = await createWorkflow({ tags: oldTags }, member);
+
+		// Check the association in DB
+		const oldSharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
+			where: {
+				projectId: memberPersonalProject.id,
+				workflowId: workflow.id,
+			},
+			relations: ['workflow.tags'],
+		});
+
+		expect(oldSharedWorkflow?.workflow.tags).toBeDefined();
+		expect(oldSharedWorkflow?.workflow.tags?.length).toBe(2);
+		if (oldSharedWorkflow?.workflow.tags !== undefined) {
+			for (const tag of oldSharedWorkflow?.workflow.tags) {
+				const { id, name, createdAt, updatedAt } = tag;
+
+				expect(id).toBeDefined();
+				expect(name).toBeDefined();
+				expect(createdAt).toBeDefined();
+				expect(updatedAt).toBeDefined();
+
+				oldTags.forEach((tag: TagEntity) => {
+					expect(oldTags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+				});
+			}
+		}
+
+		const payload = [
+			{
+				id: newTags[0].id,
+			},
+			{
+				id: newTags[1].id,
+			},
+		];
+
+		const response = await authMemberAgent.put(`/workflows/${workflow.id}/tags`).send(payload);
+
+		expect(response.statusCode).toBe(200);
+		expect(response.body.length).toBe(2);
+
+		for (const tag of response.body) {
+			const { id, name, createdAt, updatedAt } = tag;
+
+			expect(id).toBeDefined();
+			expect(name).toBeDefined();
+			expect(createdAt).toBeDefined();
+			expect(updatedAt).toBeDefined();
+
+			newTags.forEach((tag: TagEntity) => {
+				expect(newTags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+			});
+		}
+
+		// Check the association in DB
+		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
+			where: {
+				projectId: memberPersonalProject.id,
+				workflowId: workflow.id,
+			},
+			relations: ['workflow.tags'],
+		});
+
+		expect(sharedWorkflow?.workflow.tags).toBeDefined();
+		expect(sharedWorkflow?.workflow.tags?.length).toBe(2);
+		if (sharedWorkflow?.workflow.tags !== undefined) {
+			for (const tag of sharedWorkflow?.workflow.tags) {
+				const { id, name, createdAt, updatedAt } = tag;
+
+				expect(id).toBeDefined();
+				expect(name).toBeDefined();
+				expect(createdAt).toBeDefined();
+				expect(updatedAt).toBeDefined();
+
+				newTags.forEach((tag: TagEntity) => {
+					expect(newTags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+				});
+			}
+		}
+	});
+
+	test('should fail to add the tags as one does not exist, workflow should maintain previous tags', async () => {
+		config.set('workflowTagsDisabled', false);
+
+		const tags = await Promise.all([await createTag({}), await createTag({})]);
+		const oldTags = [tags[0], tags[1]];
+		const workflow = await createWorkflow({ tags: oldTags }, member);
+
+		// Check the association in DB
+		const oldSharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
+			where: {
+				projectId: memberPersonalProject.id,
+				workflowId: workflow.id,
+			},
+			relations: ['workflow.tags'],
+		});
+
+		expect(oldSharedWorkflow?.workflow.tags).toBeDefined();
+		expect(oldSharedWorkflow?.workflow.tags?.length).toBe(2);
+		if (oldSharedWorkflow?.workflow.tags !== undefined) {
+			for (const tag of oldSharedWorkflow?.workflow.tags) {
+				const { id, name, createdAt, updatedAt } = tag;
+
+				expect(id).toBeDefined();
+				expect(name).toBeDefined();
+				expect(createdAt).toBeDefined();
+				expect(updatedAt).toBeDefined();
+
+				oldTags.forEach((tag: TagEntity) => {
+					expect(oldTags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+				});
+			}
+		}
+
+		const payload = [
+			{
+				id: oldTags[0].id,
+			},
+			{
+				id: 'TagDoesNotExist',
+			},
+		];
+
+		const response = await authMemberAgent.put(`/workflows/${workflow.id}/tags`).send(payload);
+
+		expect(response.statusCode).toBe(404);
+		expect(response.body.message).toBe('Some tags not found');
+
+		// Check the association in DB
+		const sharedWorkflow = await Container.get(SharedWorkflowRepository).findOne({
+			where: {
+				projectId: memberPersonalProject.id,
+				workflowId: workflow.id,
+			},
+			relations: ['workflow.tags'],
+		});
+
+		expect(sharedWorkflow?.workflow.tags).toBeDefined();
+		expect(sharedWorkflow?.workflow.tags?.length).toBe(2);
+		if (sharedWorkflow?.workflow.tags !== undefined) {
+			for (const tag of sharedWorkflow?.workflow.tags) {
+				const { id, name, createdAt, updatedAt } = tag;
+
+				expect(id).toBeDefined();
+				expect(name).toBeDefined();
+				expect(createdAt).toBeDefined();
+				expect(updatedAt).toBeDefined();
+
+				oldTags.forEach((tag: TagEntity) => {
+					expect(oldTags.some((savedTag) => savedTag.id === tag.id)).toBe(true);
+				});
+			}
+		}
 	});
 });

@@ -1,3 +1,34 @@
+import { createMockNodeExecutionData, runMockWorkflowExecution } from '../utils';
+import {
+	addLanguageModelNodeToParent,
+	addMemoryNodeToParent,
+	addNodeToCanvas,
+	addOutputParserNodeToParent,
+	addToolNodeToParent,
+	clickExecuteWorkflowButton,
+	clickManualChatButton,
+	disableNode,
+	getExecuteWorkflowButton,
+	navigateToNewWorkflowPage,
+	openNode,
+} from '../composables/workflow';
+import {
+	clickCreateNewCredential,
+	clickExecuteNode,
+	clickGetBackToCanvas,
+	toggleParameterCheckboxInputByName,
+} from '../composables/ndv';
+import { setCredentialValues } from '../composables/modals/credential-modal';
+import {
+	closeManualChatModal,
+	getManualChatDialog,
+	getManualChatMessages,
+	getManualChatModal,
+	getManualChatModalLogs,
+	getManualChatModalLogsEntries,
+	getManualChatModalLogsTree,
+	sendManualChatMessage,
+} from '../composables/modals/chat-modal';
 import {
 	AGENT_NODE_NAME,
 	MANUAL_CHAT_TRIGGER_NODE_NAME,
@@ -9,45 +40,66 @@ import {
 	AI_TOOL_CODE_NODE_NAME,
 	AI_TOOL_WIKIPEDIA_NODE_NAME,
 	BASIC_LLM_CHAIN_NODE_NAME,
+	EDIT_FIELDS_SET_NODE_NAME,
 } from './../constants';
-import { createMockNodeExecutionData, runMockWorkflowExcution } from '../utils';
-import {
-	addLanguageModelNodeToParent,
-	addMemoryNodeToParent,
-	addNodeToCanvas,
-	addOutputParserNodeToParent,
-	addToolNodeToParent,
-	clickManualChatButton,
-	navigateToNewWorkflowPage,
-	openNode,
-} from '../composables/workflow';
-import {
-	clickCreateNewCredential,
-	clickExecuteNode,
-	clickGetBackToCanvas,
-	getOutputPanelTable,
-	setParameterInputByName,
-} from '../composables/ndv';
-import { setCredentialValues } from '../composables/modals/credential-modal';
-import {
-	closeManualChatModal,
-	getManualChatMessages,
-	getManualChatModalLogs,
-	getManualChatModalLogsEntries,
-	getManualChatModalLogsTree,
-	sendManualChatMessage,
-} from '../composables/modals/chat-modal';
 
 describe('Langchain Integration', () => {
 	beforeEach(() => {
 		navigateToNewWorkflowPage();
 	});
 
+	it('should not open chat modal', () => {
+		addNodeToCanvas(MANUAL_TRIGGER_NODE_NAME, true);
+		addNodeToCanvas(EDIT_FIELDS_SET_NODE_NAME, true);
+
+		clickGetBackToCanvas();
+
+		addNodeToCanvas(AGENT_NODE_NAME, true, true);
+		clickGetBackToCanvas();
+
+		addLanguageModelNodeToParent(
+			AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME,
+			AGENT_NODE_NAME,
+			true,
+		);
+		clickGetBackToCanvas();
+
+		clickExecuteWorkflowButton();
+		getManualChatModal().should('not.exist');
+	});
+
+	it('should disable test workflow button', () => {
+		addNodeToCanvas('Schedule Trigger', true);
+		addNodeToCanvas(EDIT_FIELDS_SET_NODE_NAME, true);
+
+		clickGetBackToCanvas();
+
+		addNodeToCanvas(AGENT_NODE_NAME, true, true);
+		clickGetBackToCanvas();
+
+		addLanguageModelNodeToParent(
+			AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME,
+			AGENT_NODE_NAME,
+			true,
+		);
+		clickGetBackToCanvas();
+
+		disableNode('Schedule Trigger');
+
+		getExecuteWorkflowButton().should('be.disabled');
+	});
+
 	it('should add nodes to all Agent node input types', () => {
 		addNodeToCanvas(MANUAL_TRIGGER_NODE_NAME, true);
-		addNodeToCanvas(AGENT_NODE_NAME, true);
+		addNodeToCanvas(AGENT_NODE_NAME, true, true);
+		toggleParameterCheckboxInputByName('hasOutputParser');
+		clickGetBackToCanvas();
 
-		addLanguageModelNodeToParent(AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME, AGENT_NODE_NAME);
+		addLanguageModelNodeToParent(
+			AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME,
+			AGENT_NODE_NAME,
+			true,
+		);
 		clickGetBackToCanvas();
 
 		addMemoryNodeToParent(AI_MEMORY_WINDOW_BUFFER_MEMORY_NODE_NAME, AGENT_NODE_NAME);
@@ -83,6 +135,7 @@ describe('Langchain Integration', () => {
 		addLanguageModelNodeToParent(
 			AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME,
 			BASIC_LLM_CHAIN_NODE_NAME,
+			true,
 		);
 
 		clickCreateNewCredential();
@@ -92,14 +145,12 @@ describe('Langchain Integration', () => {
 		clickGetBackToCanvas();
 
 		openNode(BASIC_LLM_CHAIN_NODE_NAME);
-
 		const inputMessage = 'Hello!';
 		const outputMessage = 'Hi there! How can I assist you today?';
 
-		setParameterInputByName('prompt', inputMessage);
-
-		runMockWorkflowExcution({
-			trigger: () => clickExecuteNode(),
+		clickExecuteNode();
+		runMockWorkflowExecution({
+			trigger: () => sendManualChatMessage(inputMessage),
 			runData: [
 				createMockNodeExecutionData(BASIC_LLM_CHAIN_NODE_NAME, {
 					jsonData: {
@@ -113,15 +164,18 @@ describe('Langchain Integration', () => {
 			lastNodeExecuted: BASIC_LLM_CHAIN_NODE_NAME,
 		});
 
-		getOutputPanelTable().should('contain', 'output');
-		getOutputPanelTable().should('contain', outputMessage);
+		getManualChatDialog().should('contain', outputMessage);
 	});
 
 	it('should be able to open and execute Agent node', () => {
 		addNodeToCanvas(MANUAL_CHAT_TRIGGER_NODE_NAME, true);
 		addNodeToCanvas(AGENT_NODE_NAME, true);
 
-		addLanguageModelNodeToParent(AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME, AGENT_NODE_NAME);
+		addLanguageModelNodeToParent(
+			AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME,
+			AGENT_NODE_NAME,
+			true,
+		);
 
 		clickCreateNewCredential();
 		setCredentialValues({
@@ -134,10 +188,9 @@ describe('Langchain Integration', () => {
 		const inputMessage = 'Hello!';
 		const outputMessage = 'Hi there! How can I assist you today?';
 
-		setParameterInputByName('text', inputMessage);
-
-		runMockWorkflowExcution({
-			trigger: () => clickExecuteNode(),
+		clickExecuteNode();
+		runMockWorkflowExecution({
+			trigger: () => sendManualChatMessage(inputMessage),
 			runData: [
 				createMockNodeExecutionData(AGENT_NODE_NAME, {
 					jsonData: {
@@ -151,15 +204,18 @@ describe('Langchain Integration', () => {
 			lastNodeExecuted: AGENT_NODE_NAME,
 		});
 
-		getOutputPanelTable().should('contain', 'output');
-		getOutputPanelTable().should('contain', outputMessage);
+		getManualChatDialog().should('contain', outputMessage);
 	});
 
 	it('should add and use Manual Chat Trigger node together with Agent node', () => {
 		addNodeToCanvas(MANUAL_CHAT_TRIGGER_NODE_NAME, true);
 		addNodeToCanvas(AGENT_NODE_NAME, true);
 
-		addLanguageModelNodeToParent(AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME, AGENT_NODE_NAME);
+		addLanguageModelNodeToParent(
+			AI_LANGUAGE_MODEL_OPENAI_CHAT_MODEL_NODE_NAME,
+			AGENT_NODE_NAME,
+			true,
+		);
 
 		clickCreateNewCredential();
 		setCredentialValues({
@@ -174,7 +230,7 @@ describe('Langchain Integration', () => {
 		const inputMessage = 'Hello!';
 		const outputMessage = 'Hi there! How can I assist you today?';
 
-		runMockWorkflowExcution({
+		runMockWorkflowExecution({
 			trigger: () => {
 				sendManualChatMessage(inputMessage);
 			},

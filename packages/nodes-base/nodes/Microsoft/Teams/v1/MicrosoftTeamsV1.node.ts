@@ -10,6 +10,7 @@ import type {
 	INodeTypeBaseDescription,
 } from 'n8n-workflow';
 
+import { oldVersionNotice } from '../../../../utils/descriptions';
 import {
 	microsoftApiRequest,
 	microsoftApiRequestAllItems,
@@ -23,7 +24,6 @@ import { channelMessageFields, channelMessageOperations } from './ChannelMessage
 import { chatMessageFields, chatMessageOperations } from './ChatMessageDescription';
 
 import { taskFields, taskOperations } from './TaskDescription';
-import { oldVersionNotice } from '../../../../utils/descriptions';
 
 const versionDescription: INodeTypeDescription = {
 	displayName: 'Microsoft Teams',
@@ -667,7 +667,7 @@ export class MicrosoftTeamsV1 implements INodeType {
 
 				returnData.push(...executionData);
 			} catch (error) {
-				if (this.continueOnFail()) {
+				if (this.continueOnFail(error)) {
 					const executionErrorData = this.helpers.constructExecutionMetaData(
 						this.helpers.returnJsonArray({ error: error.message }),
 						{ itemData: { item: i } },

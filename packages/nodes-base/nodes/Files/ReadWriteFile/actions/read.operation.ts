@@ -1,8 +1,8 @@
 import type { IExecuteFunctions, INodeExecutionData, INodeProperties } from 'n8n-workflow';
 
 import glob from 'fast-glob';
-import { updateDisplayOptions } from '@utils/utilities';
 import { errorMapper } from '../helpers/utils';
+import { updateDisplayOptions } from '@utils/utilities';
 
 export const properties: INodeProperties[] = [
 	{
@@ -125,7 +125,7 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 				filePath: fileSelector,
 				operation: 'read',
 			});
-			if (this.continueOnFail()) {
+			if (this.continueOnFail(error)) {
 				returnData.push({
 					json: {
 						error: nodeOperatioinError.message,

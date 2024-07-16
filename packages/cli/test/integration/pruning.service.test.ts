@@ -14,6 +14,8 @@ import { Logger } from '@/Logger';
 import { mockInstance } from '../shared/mocking';
 import { createWorkflow } from './shared/db/workflows';
 import { createExecution, createSuccessfulExecution } from './shared/db/executions';
+import { mock } from 'jest-mock-extended';
+import type { OrchestrationService } from '@/services/orchestration.service';
 
 describe('softDeleteOnPruningCycle()', () => {
 	let pruningService: PruningService;
@@ -29,6 +31,7 @@ describe('softDeleteOnPruningCycle()', () => {
 			mockInstance(Logger),
 			Container.get(ExecutionRepository),
 			mockInstance(BinaryDataService),
+			mock<OrchestrationService>(),
 		);
 
 		workflow = await createWorkflow();
@@ -99,7 +102,7 @@ describe('softDeleteOnPruningCycle()', () => {
 			['unknown', { startedAt: now, stoppedAt: now }],
 			['canceled', { startedAt: now, stoppedAt: now }],
 			['crashed', { startedAt: now, stoppedAt: now }],
-			['failed', { startedAt: now, stoppedAt: now }],
+			['error', { startedAt: now, stoppedAt: now }],
 			['success', { finished: true, startedAt: now, stoppedAt: now }],
 		])('should prune %s executions', async (status, attributes) => {
 			const executions = [
@@ -192,7 +195,7 @@ describe('softDeleteOnPruningCycle()', () => {
 			['unknown', { startedAt: yesterday, stoppedAt: yesterday }],
 			['canceled', { startedAt: yesterday, stoppedAt: yesterday }],
 			['crashed', { startedAt: yesterday, stoppedAt: yesterday }],
-			['failed', { startedAt: yesterday, stoppedAt: yesterday }],
+			['error', { startedAt: yesterday, stoppedAt: yesterday }],
 			['success', { finished: true, startedAt: yesterday, stoppedAt: yesterday }],
 		])('should prune %s executions', async (status, attributes) => {
 			const execution = await createExecution({ status, ...attributes }, workflow);
