@@ -20,7 +20,7 @@ import {
 } from './constants';
 import { sourceControlFoldersExistCheck } from './sourceControlHelper.ee';
 import type { User } from '@db/entities/User';
-import { Logger } from '@/Logger';
+import { Logger } from '@/logger';
 import { ApplicationError } from 'n8n-workflow';
 import { OwnershipService } from '@/services/ownership.service';
 import { SourceControlPreferencesService } from './sourceControlPreferences.service.ee';
@@ -244,7 +244,7 @@ export class SourceControlGitService {
 			// Get remote branches
 			const { branches } = await this.git.branch(['-r']);
 			const remoteBranches = Object.keys(branches)
-				.map((name) => name.split('/')[1])
+				.map((name) => name.split('/').slice(1).join('/'))
 				.filter((name) => name !== 'HEAD');
 
 			const { current } = await this.git.branch();

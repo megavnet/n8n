@@ -47,6 +47,7 @@
 
 			<div
 				v-show="showActions"
+				ref="stickOptions"
 				:class="{ 'sticky-options': true, 'no-select-on-click': true, 'force-show': forceActions }"
 			>
 				<div
@@ -59,18 +60,19 @@
 				</div>
 				<n8n-popover
 					effect="dark"
-					:popper-style="{ width: '208px' }"
 					trigger="click"
 					placement="top"
+					:popper-style="{ width: '208px' }"
+					:visible="isColorPopoverVisible"
 					@show="onShowPopover"
 					@hide="onHidePopover"
 				>
 					<template #reference>
 						<div
-							ref="colorPopoverTrigger"
 							class="option"
 							data-test-id="change-sticky-color"
 							:title="$locale.baseText('node.changeColor')"
+							@click="() => setColorPopoverVisible(!isColorPopoverVisible)"
 						>
 							<font-awesome-icon icon="palette" />
 						</div>
@@ -106,6 +108,8 @@
 import { defineComponent, ref } from 'vue';
 import type { PropType, StyleValue } from 'vue';
 import { mapStores } from 'pinia';
+
+import { onClickOutside } from '@vueuse/core';
 
 import { isNumber, isString } from '@/utils/typeGuards';
 import type {
@@ -174,15 +178,22 @@ export default defineComponent({
 	setup(props, { emit }) {
 		const deviceSupport = useDeviceSupport();
 		const toast = useToast();
-		const colorPopoverTrigger = ref<HTMLDivElement>();
 		const forceActions = ref(false);
+		const isColorPopoverVisible = ref(false);
+
+		const stickOptions = ref<HTMLElement>();
+
 		const setForceActions = (value: boolean) => {
 			forceActions.value = value;
 		};
+		const setColorPopoverVisible = (value: boolean) => {
+			isColorPopoverVisible.value = value;
+		};
+
 		const contextMenu = useContextMenu((action) => {
 			if (action === 'change_color') {
 				setForceActions(true);
-				colorPopoverTrigger.value?.click();
+				setColorPopoverVisible(true);
 			}
 		});
 
@@ -194,14 +205,18 @@ export default defineComponent({
 			emit: emit as (event: string, ...args: unknown[]) => void,
 		});
 
+		onClickOutside(stickOptions, () => setColorPopoverVisible(false));
+
 		return {
 			deviceSupport,
 			toast,
-			colorPopoverTrigger,
 			contextMenu,
 			forceActions,
 			...nodeBase,
 			setForceActions,
+			isColorPopoverVisible,
+			setColorPopoverVisible,
+			stickOptions,
 		};
 	},
 	data() {
@@ -416,7 +431,7 @@ export default defineComponent({
 		},
 		onContextMenu(e: MouseEvent): void {
 			if (this.node && !this.isActive) {
-				this.contextMenu.open(e, { source: 'node-right-click', node: this.node });
+				this.contextMenu.open(e, { source: 'node-right-click', nodeId: this.node.id });
 			} else {
 				e.stopPropagation();
 			}

@@ -20,14 +20,16 @@ import type {
 	SelectQueryBuilder,
 } from '@n8n/typeorm';
 import { parse, stringify } from 'flatted';
+import { GlobalConfig } from '@n8n/config';
 import {
 	ApplicationError,
-	WorkflowOperationError,
 	type ExecutionStatus,
 	type ExecutionSummary,
 	type IRunExecutionData,
 } from 'n8n-workflow';
 import { BinaryDataService } from 'n8n-core';
+import { ExecutionCancelledError, ErrorReporterProxy as ErrorReporter } from 'n8n-workflow';
+
 import type {
 	ExecutionPayload,
 	IExecutionBase,
@@ -40,12 +42,10 @@ import type { ExecutionData } from '../entities/ExecutionData';
 import { ExecutionEntity } from '../entities/ExecutionEntity';
 import { ExecutionMetadata } from '../entities/ExecutionMetadata';
 import { ExecutionDataRepository } from './executionData.repository';
-import { Logger } from '@/Logger';
+import { Logger } from '@/logger';
 import type { ExecutionSummaries } from '@/executions/execution.types';
 import { PostgresLiveRowsRetrievalError } from '@/errors/postgres-live-rows-retrieval.error';
-import { GlobalConfig } from '@n8n/config';
 import { separate } from '@/utils';
-import { ErrorReporterProxy as ErrorReporter } from 'n8n-workflow';
 
 export interface IGetExecutionsQueryFilter {
 	id?: FindOperator<string> | string;
@@ -270,6 +270,9 @@ export class ExecutionRepository extends Repository<ExecutionEntity> {
 		return rest;
 	}
 
+	/**
+	 * Insert a new execution and its execution data using a transaction.
+	 */
 	async createNewExecution(execution: ExecutionPayload): Promise<string> {
 		const { data, workflowData, ...rest } = execution;
 		const { identifiers: inserted } = await this.insert(rest);
@@ -641,8 +644,9 @@ export class ExecutionRepository extends Repository<ExecutionEntity> {
 	}
 
 	async stopDuringRun(execution: IExecutionResponse) {
-		const error = new WorkflowOperationError('Workflow-Execution has been canceled!');
+		const error = new ExecutionCancelledError(execution.id);
 
+		execution.data ??= { resultData: { runData: {} } };
 		execution.data.resultData.error = {
 			...error,
 			message: error.message,
@@ -780,8 +784,8 @@ export class ExecutionRepository extends Repository<ExecutionEntity> {
 			if (firstId) qb.andWhere('execution.id > :firstId', { firstId });
 			if (lastId) qb.andWhere('execution.id < :lastId', { lastId });
 
-			if (query.order?.stoppedAt === 'DESC') {
-				qb.orderBy({ 'execution.stoppedAt': 'DESC' });
+			if (query.order?.startedAt === 'DESC') {
+				qb.orderBy({ 'execution.startedAt': 'DESC' });
 			} else if (query.order?.top) {
 				qb.orderBy(`(CASE WHEN execution.status = '${query.order.top}' THEN 0 ELSE 1 END)`);
 			} else {

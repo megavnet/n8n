@@ -15,19 +15,19 @@ import {
 	getServiceProviderConfigTestReturnUrl,
 	getServiceProviderEntityId,
 	getServiceProviderReturnUrl,
-} from '../serviceProvider.ee';
-import { getSamlConnectionTestSuccessView } from '../views/samlConnectionTestSuccess';
-import { getSamlConnectionTestFailedView } from '../views/samlConnectionTestFailed';
-import { isConnectionTestRequest, isSamlLicensedAndEnabled } from '../samlHelpers';
+} from '../service-provider.ee';
+import { getSamlConnectionTestSuccessView } from '../views/saml-connection-test-success';
+import { getSamlConnectionTestFailedView } from '../views/saml-connection-test-failed';
+import { isConnectionTestRequest, isSamlLicensedAndEnabled } from '../saml-helpers';
 import type { SamlLoginBinding } from '../types';
 import {
 	samlLicensedAndEnabledMiddleware,
 	samlLicensedMiddleware,
-} from '../middleware/samlEnabledMiddleware';
+} from '../middleware/saml-enabled-middleware';
 import { SamlService } from '../saml.service.ee';
 import { SamlConfiguration } from '../types/requests';
-import { getInitSSOFormView } from '../views/initSsoPost';
-import { EventRelay } from '@/eventbus/event-relay.service';
+import { getInitSSOFormView } from '../views/init-sso-post';
+import { EventService } from '@/events/event.service';
 
 @RestController('/sso/saml')
 export class SamlController {
@@ -35,7 +35,7 @@ export class SamlController {
 		private readonly authService: AuthService,
 		private readonly samlService: SamlService,
 		private readonly urlService: UrlService,
-		private readonly eventRelay: EventRelay,
+		private readonly eventService: EventService,
 	) {}
 
 	@Get('/metadata', { skipAuth: true })
@@ -126,7 +126,7 @@ export class SamlController {
 				}
 			}
 			if (loginResult.authenticatedUser) {
-				this.eventRelay.emit('user-logged-in', {
+				this.eventService.emit('user-logged-in', {
 					user: loginResult.authenticatedUser,
 					authenticationMethod: 'saml',
 				});
@@ -144,7 +144,7 @@ export class SamlController {
 					return res.status(202).send(loginResult.attributes);
 				}
 			}
-			this.eventRelay.emit('user-login-failed', {
+			this.eventService.emit('user-login-failed', {
 				userEmail: loginResult.attributes.email ?? 'unknown',
 				authenticationMethod: 'saml',
 			});
@@ -153,7 +153,7 @@ export class SamlController {
 			if (isConnectionTestRequest(req)) {
 				return res.send(getSamlConnectionTestFailedView((error as Error).message));
 			}
-			this.eventRelay.emit('user-login-failed', {
+			this.eventService.emit('user-login-failed', {
 				userEmail: 'unknown',
 				authenticationMethod: 'saml',
 			});

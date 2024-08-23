@@ -4,6 +4,7 @@ import { Container, Service } from 'typedi';
 
 // eslint-disable-next-line @typescript-eslint/ban-types
 type Class = Function;
+type Constructable<T = unknown> = new (rawValue: string) => T;
 type PropertyKey = string | symbol;
 interface PropertyMetadata {
 	type: unknown;
@@ -46,6 +47,13 @@ export const Config: ClassDecorator = (ConfigClass: Class) => {
 					} else {
 						value = value === 'true';
 					}
+				} else if (type === Object) {
+					// eslint-disable-next-line n8n-local-rules/no-plain-errors
+					throw new Error(
+						`Invalid decorator metadata on key "${key as string}" on ${ConfigClass.name}\n Please use explicit typing on all config fields`,
+					);
+				} else if (type !== String && type !== Object) {
+					value = new (type as Constructable)(value as string);
 				}
 
 				if (value !== undefined) {

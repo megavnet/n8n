@@ -1,19 +1,21 @@
 <template>
 	<div ref="wrapper" :class="parameterInputClasses" @keydown.stop>
-		<ExpressionEdit
+		<ExpressionEditModal
 			:dialog-visible="expressionEditDialogVisible"
 			:model-value="modelValueExpressionEdit"
 			:parameter="parameter"
+			:node="node"
 			:path="path"
 			:event-source="eventSource || 'ndv'"
 			:is-read-only="isReadOnly"
 			:redact-values="shouldRedactValue"
 			@close-dialog="closeExpressionEditDialog"
 			@update:model-value="expressionUpdated"
-		></ExpressionEdit>
+		></ExpressionEditModal>
+
 		<div class="parameter-input ignore-key-press" :style="parameterInputWrapperStyle">
 			<ResourceLocator
-				v-if="isResourceLocatorParameter"
+				v-if="parameter.type === 'resourceLocator'"
 				ref="resourceLocator"
 				:parameter="parameter"
 				:model-value="modelValueResourceLocator"
@@ -28,6 +30,25 @@
 				:node="node"
 				:path="path"
 				:event-bus="eventBus"
+				@update:model-value="valueChanged"
+				@modal-opener-click="openExpressionEditorModal"
+				@focus="setFocus"
+				@blur="onBlur"
+				@drop="onResourceLocatorDrop"
+			/>
+			<WorkflowSelectorParameterInput
+				v-else-if="parameter.type === 'workflowSelector'"
+				ref="resourceLocator"
+				:parameter="parameter"
+				:model-value="modelValueResourceLocator"
+				:dependent-parameters-values="dependentParametersValues"
+				:display-title="displayTitle"
+				:expression-display-value="expressionDisplayValue"
+				:expression-computed-value="expressionEvaluated"
+				:is-value-expression="isModelValueExpression"
+				:expression-edit-dialog-visible="expressionEditDialogVisible"
+				:path="path"
+				:parameter-issues="getIssues"
 				@update:model-value="valueChanged"
 				@modal-opener-click="openExpressionEditorModal"
 				@focus="setFocus"
@@ -134,13 +155,14 @@
 					:model-value="modelValueString"
 					:default-value="parameter.default"
 					:language="editorLanguage"
-					:is-read-only="isReadOnly"
+					:is-read-only="isReadOnly || editorIsReadOnly"
 					:rows="editorRows"
 					:ai-button-enabled="settingsStore.isCloudDeployment"
 					@update:model-value="valueChangedDebounced"
 				>
 					<template #suffix>
 						<n8n-icon
+							v-if="!editorIsReadOnly"
 							data-test-id="code-editor-fullscreen-button"
 							icon="external-link-alt"
 							size="xsmall"
@@ -198,12 +220,13 @@
 					v-else-if="editorType === 'jsEditor'"
 					:key="'js-' + codeEditDialogVisible.toString()"
 					:model-value="modelValueString"
-					:is-read-only="isReadOnly"
+					:is-read-only="isReadOnly || editorIsReadOnly"
 					:rows="editorRows"
 					@update:model-value="valueChangedDebounced"
 				>
 					<template #suffix>
 						<n8n-icon
+							v-if="!editorIsReadOnly"
 							data-test-id="code-editor-fullscreen-button"
 							icon="external-link-alt"
 							size="xsmall"
@@ -253,7 +276,11 @@
 					:size="inputSize"
 					:type="getStringInputType"
 					:rows="editorRows"
-					:disabled="isReadOnly"
+					:disabled="
+						isReadOnly ||
+						remoteParameterOptionsLoading ||
+						remoteParameterOptionsLoadingIssues !== null
+					"
 					:title="displayTitle"
 					:placeholder="getPlaceholder()"
 					@update:model-value="(valueChanged($event) as undefined) && onUpdateTextInput($event)"
@@ -491,7 +518,7 @@ import { CREDENTIAL_EMPTY_VALUE, NodeHelpers } from 'n8n-workflow';
 
 import CodeNodeEditor from '@/components/CodeNodeEditor/CodeNodeEditor.vue';
 import CredentialsSelect from '@/components/CredentialsSelect.vue';
-import ExpressionEdit from '@/components/ExpressionEdit.vue';
+import ExpressionEditModal from '@/components/ExpressionEditModal.vue';
 import ExpressionParameterInput from '@/components/ExpressionParameterInput.vue';
 import HtmlEditor from '@/components/HtmlEditor/HtmlEditor.vue';
 import JsEditor from '@/components/JsEditor/JsEditor.vue';
@@ -855,6 +882,9 @@ const getIssues = computed<string[]>(() => {
 const editorType = computed<EditorType | 'json' | 'code'>(() => {
 	return getArgument<EditorType>('editor');
 });
+const editorIsReadOnly = computed<boolean>(() => {
+	return getArgument<boolean>('editorIsReadOnly') ?? false;
+});
 
 const editorLanguage = computed<CodeNodeEditorLanguage>(() => {
 	if (editorType.value === 'json' || props.parameter.type === 'json')
@@ -928,7 +958,7 @@ const shortPath = computed<string>(() => {
 });
 
 const isResourceLocatorParameter = computed<boolean>(() => {
-	return props.parameter.type === 'resourceLocator';
+	return props.parameter.type === 'resourceLocator' || props.parameter.type === 'workflowSelector';
 });
 
 const isSecretParameter = computed<boolean>(() => {

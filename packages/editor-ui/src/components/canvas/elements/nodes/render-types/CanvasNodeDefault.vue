@@ -12,8 +12,13 @@ import type { CanvasNodeDefaultRender } from '@/types';
 const $style = useCssModule();
 const i18n = useI18n();
 
+const emit = defineEmits<{
+	'open:contextmenu': [event: MouseEvent];
+}>();
+
 const {
 	label,
+	subtitle,
 	inputs,
 	outputs,
 	connections,
@@ -79,10 +84,14 @@ const dataTestId = computed(() => {
 
 	return `canvas-${type}-node`;
 });
+
+function openContextMenu(event: MouseEvent) {
+	emit('open:contextmenu', event);
+}
 </script>
 
 <template>
-	<div :class="classes" :style="styles" :data-test-id="dataTestId">
+	<div :class="classes" :style="styles" :data-test-id="dataTestId" @contextmenu="openContextMenu">
 		<slot />
 		<N8nTooltip v-if="renderOptions.trigger" placement="bottom">
 			<template #content>
@@ -94,23 +103,27 @@ const dataTestId = computed(() => {
 		</N8nTooltip>
 		<CanvasNodeStatusIcons :class="$style.statusIcons" />
 		<CanvasNodeDisabledStrikeThrough v-if="isDisabled" />
-		<div v-if="label" :class="$style.label">
-			{{ label }}
-			<div v-if="isDisabled">({{ i18n.baseText('node.disabled') }})</div>
+		<div :class="$style.description">
+			<div v-if="label" :class="$style.label">
+				{{ label }}
+				<div v-if="isDisabled">({{ i18n.baseText('node.disabled') }})</div>
+			</div>
+			<div v-if="subtitle" :class="$style.subtitle">{{ subtitle }}</div>
 		</div>
 	</div>
 </template>
 
 <style lang="scss" module>
 .node {
-	--canvas-node--height: calc(96px + max(0, var(--canvas-node--main-output-count, 1) - 4) * 48px);
-	--canvas-node--width: 96px;
+	--canvas-node--height: calc(100px + max(0, var(--canvas-node--main-output-count, 1) - 4) * 48px);
+	--canvas-node--width: 100px;
 	--canvas-node-border-width: 2px;
 	--configurable-node--min-input-count: 4;
 	--configurable-node--input-width: 64px;
 	--configurable-node--icon-offset: 40px;
 	--configurable-node--icon-size: 30px;
 	--trigger-node--border-radius: 36px;
+	--canvas-node--status-icons-offset: var(--spacing-2xs);
 
 	height: var(--canvas-node--height);
 	width: var(--canvas-node--width);
@@ -146,13 +159,13 @@ const dataTestId = computed(() => {
 	}
 
 	&.configurable {
-		--canvas-node--height: 96px;
+		--canvas-node--height: 100px;
 		--canvas-node--width: calc(
 			max(var(--configurable-node--input-count, 5), var(--configurable-node--min-input-count)) *
 				var(--configurable-node--input-width)
 		);
 
-		.label {
+		.description {
 			top: unset;
 			position: relative;
 			margin-left: var(--spacing-s);
@@ -172,7 +185,7 @@ const dataTestId = computed(() => {
 	 */
 
 	&.selected {
-		box-shadow: 0 0 0 4px var(--color-canvas-selected);
+		box-shadow: 0 0 0 8px var(--color-canvas-selected-transparent);
 	}
 
 	&.success {
@@ -197,20 +210,47 @@ const dataTestId = computed(() => {
 	}
 }
 
-.label {
+.description {
 	top: 100%;
 	position: absolute;
+	width: 100%;
+	min-width: calc(var(--canvas-node--width) * 2);
+	margin-top: var(--spacing-2xs);
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-4xs);
+	align-items: center;
+}
+
+.label {
 	font-size: var(--font-size-m);
 	text-align: center;
+	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+	font-weight: var(--font-weight-bold);
+	line-height: var(--font-line-height-compact);
+}
+
+.subtitle {
 	width: 100%;
-	min-width: 200px;
-	margin-top: var(--spacing-2xs);
+	text-align: center;
+	color: var(--color-text-light);
+	font-size: var(--font-size-xs);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: var(--font-line-height-compact);
+	font-weight: 400;
 }
 
 .statusIcons {
 	position: absolute;
-	bottom: var(--spacing-2xs);
-	right: var(--spacing-2xs);
+	bottom: var(--canvas-node--status-icons-offset);
+	right: var(--canvas-node--status-icons-offset);
 }
 
 .triggerIcon {

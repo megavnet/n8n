@@ -35,6 +35,8 @@ import {
 	SETUP_CREDENTIALS_MODAL_KEY,
 	PROJECT_MOVE_RESOURCE_MODAL,
 	PROJECT_MOVE_RESOURCE_CONFIRM_MODAL,
+	NEW_ASSISTANT_SESSION_MODAL,
+	PROMPT_MFA_CODE_MODAL_KEY,
 } from '@/constants';
 import type {
 	CloudUpdateLinkSourceType,
@@ -114,6 +116,7 @@ export const useUIStore = defineStore(STORES.UI, () => {
 				WORKFLOW_ACTIVE_MODAL_KEY,
 				COMMUNITY_PACKAGE_INSTALL_MODAL_KEY,
 				MFA_SETUP_MODAL_KEY,
+				PROMPT_MFA_CODE_MODAL_KEY,
 				SOURCE_CONTROL_PUSH_MODAL_KEY,
 				SOURCE_CONTROL_PULL_MODAL_KEY,
 				EXTERNAL_SECRETS_PROVIDER_MODAL_KEY,
@@ -122,6 +125,7 @@ export const useUIStore = defineStore(STORES.UI, () => {
 				SETUP_CREDENTIALS_MODAL_KEY,
 				PROJECT_MOVE_RESOURCE_MODAL,
 				PROJECT_MOVE_RESOURCE_CONFIRM_MODAL,
+				NEW_ASSISTANT_SESSION_MODAL,
 			].map((modalKey) => [modalKey, { open: false }]),
 		),
 		[DELETE_USER_MODAL_KEY]: {
@@ -178,7 +182,6 @@ export const useUIStore = defineStore(STORES.UI, () => {
 	const lastSelectedNode = ref<string | null>(null);
 	const lastSelectedNodeOutputIndex = ref<number | null>(null);
 	const lastSelectedNodeEndpointUuid = ref<string | null>(null);
-	const lastSelectedNodeConnection = ref<Connection | null>(null);
 	const nodeViewOffsetPosition = ref<[number, number]>([0, 0]);
 	const nodeViewMoveInProgress = ref<boolean>(false);
 	const selectedNodes = ref<INodeUi[]>([]);
@@ -188,6 +191,11 @@ export const useUIStore = defineStore(STORES.UI, () => {
 	const bannerStack = ref<BannerName[]>([]);
 	const pendingNotificationsForViews = ref<{ [key in VIEWS]?: NotificationOptions[] }>({});
 	const isCreateNodeActive = ref<boolean>(false);
+
+	// Last interacted with - Canvas v2 specific
+	const lastInteractedWithNodeConnection = ref<Connection | null>(null);
+	const lastInteractedWithNodeHandle = ref<string | null>(null);
+	const lastInteractedWithNodeId = ref<string | null>(null);
 
 	const settingsStore = useSettingsStore();
 	const workflowsStore = useWorkflowsStore();
@@ -272,6 +280,14 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		if (lastSelectedNode.value) {
 			return workflowsStore.getNodeByName(lastSelectedNode.value);
 		}
+		return null;
+	});
+
+	const lastInteractedWithNode = computed(() => {
+		if (lastInteractedWithNodeId.value) {
+			return workflowsStore.getNodeById(lastInteractedWithNodeId.value);
+		}
+
 		return null;
 	});
 
@@ -468,14 +484,14 @@ export const useUIStore = defineStore(STORES.UI, () => {
 	};
 
 	const openCommunityPackageUninstallConfirmModal = (packageName: string) => {
-		setMode(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, packageName);
-		setActiveId(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, COMMUNITY_PACKAGE_MANAGE_ACTIONS.UNINSTALL);
+		setMode(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, COMMUNITY_PACKAGE_MANAGE_ACTIONS.UNINSTALL);
+		setActiveId(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, packageName);
 		openModal(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY);
 	};
 
 	const openCommunityPackageUpdateConfirmModal = (packageName: string) => {
-		setMode(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, packageName);
-		setActiveId(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, COMMUNITY_PACKAGE_MANAGE_ACTIONS.UPDATE);
+		setMode(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, COMMUNITY_PACKAGE_MANAGE_ACTIONS.UPDATE);
+		setActiveId(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY, packageName);
 		openModal(COMMUNITY_PACKAGE_CONFIRM_MODAL_KEY);
 	};
 
@@ -600,6 +616,12 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		delete pendingNotificationsForViews.value[view];
 	};
 
+	function resetLastInteractedWith() {
+		lastInteractedWithNodeConnection.value = null;
+		lastInteractedWithNodeHandle.value = null;
+		lastInteractedWithNodeId.value = null;
+	}
+
 	return {
 		appliedTheme,
 		logo,
@@ -621,7 +643,10 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		selectedNodes,
 		bannersHeight,
 		lastSelectedNodeEndpointUuid,
-		lastSelectedNodeConnection,
+		lastInteractedWithNodeConnection,
+		lastInteractedWithNodeHandle,
+		lastInteractedWithNodeId,
+		lastInteractedWithNode,
 		nodeViewOffsetPosition,
 		nodeViewMoveInProgress,
 		nodeViewInitialized,
@@ -670,11 +695,12 @@ export const useUIStore = defineStore(STORES.UI, () => {
 		clearBannerStack,
 		setNotificationsForView,
 		deleteNotificationsForView,
+		resetLastInteractedWith,
 	};
 });
 
 /**
- * Helper function for listening to credential changes in the store
+ * Helper function for listening to model opening and closings in the store
  */
 export const listenForModalChanges = (opts: {
 	store: UiStore;

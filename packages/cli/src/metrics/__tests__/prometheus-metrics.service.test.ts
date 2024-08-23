@@ -5,6 +5,8 @@ import { mock } from 'jest-mock-extended';
 import { PrometheusMetricsService } from '../prometheus-metrics.service';
 import type express from 'express';
 import type { MessageEventBus } from '@/eventbus/MessageEventBus/MessageEventBus';
+import { mockInstance } from '@test/mocking';
+import { GlobalConfig } from '@n8n/config';
 
 const mockMiddleware = (
 	_req: express.Request,
@@ -16,15 +18,29 @@ jest.mock('prom-client');
 jest.mock('express-prom-bundle', () => jest.fn(() => mockMiddleware));
 
 describe('PrometheusMetricsService', () => {
-	beforeEach(() => {
-		config.load(config.default);
+	const globalConfig = mockInstance(GlobalConfig, {
+		endpoints: {
+			metrics: {
+				prefix: 'n8n_',
+				includeDefaultMetrics: true,
+				includeApiEndpoints: true,
+				includeCacheMetrics: true,
+				includeMessageEventBusMetrics: true,
+				includeCredentialTypeLabel: false,
+				includeNodeTypeLabel: false,
+				includeWorkflowIdLabel: false,
+				includeApiPathLabel: true,
+				includeApiMethodLabel: true,
+				includeApiStatusCodeLabel: true,
+			},
+		},
 	});
 
-	describe('configureMetrics', () => {
+	describe('init', () => {
 		it('should set up `n8n_version_info`', async () => {
-			const service = new PrometheusMetricsService(mock(), mock(), mock());
+			const service = new PrometheusMetricsService(mock(), mock(), globalConfig);
 
-			await service.configureMetrics(mock<express.Application>());
+			await service.init(mock<express.Application>());
 
 			expect(promClient.Gauge).toHaveBeenCalledWith({
 				name: 'n8n_version_info',
@@ -34,65 +50,68 @@ describe('PrometheusMetricsService', () => {
 		});
 
 		it('should set up default metrics collection with `prom-client`', async () => {
-			const service = new PrometheusMetricsService(mock(), mock(), mock());
+			const service = new PrometheusMetricsService(mock(), mock(), globalConfig);
 
-			await service.configureMetrics(mock<express.Application>());
+			await service.init(mock<express.Application>());
 
 			expect(promClient.collectDefaultMetrics).toHaveBeenCalled();
 		});
 
 		it('should set up `n8n_cache_hits_total`', async () => {
 			config.set('endpoints.metrics.includeCacheMetrics', true);
-			const service = new PrometheusMetricsService(mock(), mock(), mock());
+			const service = new PrometheusMetricsService(mock(), mock(), globalConfig);
 
-			await service.configureMetrics(mock<express.Application>());
+			await service.init(mock<express.Application>());
 
 			expect(promClient.Counter).toHaveBeenCalledWith({
 				name: 'n8n_cache_hits_total',
 				help: 'Total number of cache hits.',
 				labelNames: ['cache'],
 			});
+			// @ts-expect-error private field
 			expect(service.counters.cacheHitsTotal?.inc).toHaveBeenCalledWith(0);
 		});
 
 		it('should set up `n8n_cache_misses_total`', async () => {
 			config.set('endpoints.metrics.includeCacheMetrics', true);
-			const service = new PrometheusMetricsService(mock(), mock(), mock());
+			const service = new PrometheusMetricsService(mock(), mock(), globalConfig);
 
-			await service.configureMetrics(mock<express.Application>());
+			await service.init(mock<express.Application>());
 
 			expect(promClient.Counter).toHaveBeenCalledWith({
 				name: 'n8n_cache_misses_total',
 				help: 'Total number of cache misses.',
 				labelNames: ['cache'],
 			});
+			// @ts-expect-error private field
 			expect(service.counters.cacheMissesTotal?.inc).toHaveBeenCalledWith(0);
 		});
 
 		it('should set up `n8n_cache_updates_total`', async () => {
 			config.set('endpoints.metrics.includeCacheMetrics', true);
-			const service = new PrometheusMetricsService(mock(), mock(), mock());
+			const service = new PrometheusMetricsService(mock(), mock(), globalConfig);
 
-			await service.configureMetrics(mock<express.Application>());
+			await service.init(mock<express.Application>());
 
 			expect(promClient.Counter).toHaveBeenCalledWith({
 				name: 'n8n_cache_updates_total',
 				help: 'Total number of cache updates.',
 				labelNames: ['cache'],
 			});
+			// @ts-expect-error private field
 			expect(service.counters.cacheUpdatesTotal?.inc).toHaveBeenCalledWith(0);
 		});
 
-		it('should set up API metrics with `express-prom-bundle`', async () => {
+		it('should set up route metrics with `express-prom-bundle`', async () => {
 			config.set('endpoints.metrics.includeApiEndpoints', true);
 			config.set('endpoints.metrics.includeApiPathLabel', true);
 			config.set('endpoints.metrics.includeApiMethodLabel', true);
 			config.set('endpoints.metrics.includeApiStatusCodeLabel', true);
-			const service = new PrometheusMetricsService(mock(), mock(), mock());
+			const service = new PrometheusMetricsService(mock(), mock(), globalConfig);
 
 			const app = mock<express.Application>();
 
-			await service.configureMetrics(app);
+			await service.init(app);
 
 			expect(promBundle).toHaveBeenCalledWith({
 				autoregister: false,
@@ -103,21 +122,27 @@ describe('PrometheusMetricsService', () => {
 			});
 
 			expect(app.use).toHaveBeenCalledWith(
-				['/rest/', '/webhook/', 'webhook-test/', '/api/'],
+				[
+					'/rest/',
+					'/api/',
+					'/webhook/',
+					'/webhook-waiting/',
+					'/webhook-test/',
+					'/form/',
+					'/form-waiting/',
+					'/form-test/',
+				],
 				expect.any(Function),
 			);
 		});
 
 		it('should set up event bus metrics', async () => {
 			const eventBus = mock<MessageEventBus>();
-			const service = new PrometheusMetricsService(mock(), mock(), eventBus);
+			const service = new PrometheusMetricsService(mock(), eventBus, globalConfig);
 
-			await service.configureMetrics(mock<express.Application>());
+			await service.init(mock<express.Application>());
 
-			expect(eventBus.on).toHaveBeenCalledWith(
-				'metrics.messageEventBus.Event',
-				expect.any(Function),
-			);
+			expect(eventBus.on).toHaveBeenCalledWith('metrics.eventBus.event', expect.any(Function));
 		});
 	});
 });

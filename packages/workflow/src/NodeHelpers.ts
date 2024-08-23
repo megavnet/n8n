@@ -359,7 +359,7 @@ const declarativeNodeOptionParameters: INodeProperties = {
 export function isSubNodeType(
 	typeDescription: Pick<INodeTypeDescription, 'outputs'> | null,
 ): boolean {
-	if (!typeDescription || !typeDescription.outputs || typeof typeDescription.outputs === 'string') {
+	if (!typeDescription?.outputs || typeof typeDescription.outputs === 'string') {
 		return false;
 	}
 	const outputTypes = getConnectionTypes(typeDescription.outputs);
@@ -520,6 +520,9 @@ const checkConditions = (
 				}
 				if (key === 'regex') {
 					return new RegExp(targetValue as string).test(propertyValue as string);
+				}
+				if (key === 'exists') {
+					return propertyValue !== null && propertyValue !== undefined && propertyValue !== '';
 				}
 				return false;
 			});
@@ -1577,7 +1580,7 @@ export function addToIssuesIfMissing(
 		(nodeProperties.type === 'multiOptions' && Array.isArray(value) && value.length === 0) ||
 		(nodeProperties.type === 'dateTime' && value === undefined) ||
 		(nodeProperties.type === 'options' && (value === '' || value === undefined)) ||
-		(nodeProperties.type === 'resourceLocator' &&
+		((nodeProperties.type === 'resourceLocator' || nodeProperties.type === 'workflowSelector') &&
 			!isValidResourceLocatorParameterValue(value as INodeParameterResourceLocator))
 	) {
 		// Parameter is required but empty
@@ -1651,7 +1654,10 @@ export function getParameterIssues(
 		}
 	}
 
-	if (nodeProperties.type === 'resourceLocator' && isDisplayed) {
+	if (
+		(nodeProperties.type === 'resourceLocator' || nodeProperties.type === 'workflowSelector') &&
+		isDisplayed
+	) {
 		const value = getParameterValueByPath(nodeValues, nodeProperties.name, path);
 		if (isINodeParameterResourceLocator(value)) {
 			const mode = nodeProperties.modes?.find((option) => option.name === value.mode);
