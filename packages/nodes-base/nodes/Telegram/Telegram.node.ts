@@ -40,10 +40,10 @@ export class Telegram implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				options: [
-					// {
-					// 	name: 'Bot',
-					// 	value: 'bot',
-					// },
+					{
+						name: 'Bot',
+						value: 'bot',
+					},
 					{
 						name: 'Chat',
 						value: 'chat',
@@ -68,27 +68,30 @@ export class Telegram implements INodeType {
 			//         operation
 			// ----------------------------------
 
-			// {
-			// 	displayName: 'Operation',
-			// 	name: 'operation',
-			// 	type: 'options',
-			// 	displayOptions: {
-			// 		show: {
-			// 			resource: [
-			// 				'bot',
-			// 			],
-			// 		},
-			// 	},
-			// 	options: [
-			// 		{
-			// 			name: 'Info',
-			// 			value: 'info',
-			// 			description: 'Get information about the bot associated with the access token.',
-			// 		},
-			// 	],
-			// 	default: 'info',
-			// 	description: 'The operation to perform.',
-			// },
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				displayOptions: {
+					show: {
+						resource: ['bot'],
+					},
+				},
+				options: [
+					{
+						name: 'Info',
+						value: 'info',
+						description: 'Get information about the bot associated with the access token.',
+					},
+					{
+						name: 'Token',
+						value: 'token',
+						description: 'Get the access token of the bot.',
+					},
+				],
+				default: 'info',
+				description: 'The operation to perform.',
+			},
 
 			// ----------------------------------
 			//         operation
@@ -1562,6 +1565,26 @@ export class Telegram implements INodeType {
 						description: 'Whether to disable link previews for links in this message',
 					},
 					{
+						displayName: 'Protect content',
+						name: 'protect_content',
+						type: 'boolean',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'editMessageText',
+									'sendMessage',
+									'sendAnimation',
+									'sendAudio',
+									'sendDocument',
+									'sendPhoto',
+									'sendVideo',
+								],
+							},
+						},
+						default: false,
+						description: 'Protects the contents of the sent message from forwarding and saving',
+					},
+					{
 						displayName: 'Duration',
 						name: 'duration',
 						type: 'number',
@@ -1845,10 +1868,21 @@ export class Telegram implements INodeType {
 						body.chat_id = this.getNodeParameter('chatId', i) as string;
 						body.title = this.getNodeParameter('title', i) as string;
 					}
-					// } else if (resource === 'bot') {
-					// 	if (operation === 'info') {
-					// 		endpoint = 'getUpdates';
-					// 	}
+				} else if (resource === 'bot') {
+					if (operation === 'info') {
+						// endpoint = 'getUpdates';
+						endpoint = 'getMe';
+						requestMethod = 'GET';
+					} else if (operation === 'token') {
+						const credentials = await this.getCredentials('telegramApi');
+						returnData.push({
+							json: {
+								token: credentials.accessToken,
+							},
+							pairedItem: { item: i },
+						});
+						return [returnData];
+					}
 				} else if (resource === 'file') {
 					if (operation === 'get') {
 						// ----------------------------------

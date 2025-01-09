@@ -83,7 +83,7 @@ export function addAdditionalFields(
 		)}${instanceId ? '_' + instanceId : ''}`;
 
 		if (nodeVersion && nodeVersion >= 1.1 && additionalFields.appendAttribution === undefined) {
-			additionalFields.appendAttribution = true;
+			additionalFields.appendAttribution = false;
 		}
 
 		if (!additionalFields.parse_mode) {
@@ -111,6 +111,10 @@ export function addAdditionalFields(
 			additionalFields.disable_web_page_preview === undefined
 		) {
 			body.disable_web_page_preview = true;
+		}
+
+		if (additionalFields.protect_content === true) {
+			body.protect_content = true;
 		}
 
 		delete additionalFields.appendAttribution;

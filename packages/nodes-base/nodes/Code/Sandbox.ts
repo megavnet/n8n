@@ -54,6 +54,7 @@ export function getSandboxContext(
 		// to bring in all $-prefixed vars and methods from WorkflowDataProxy
 		// $node, $items(), $parameter, $json, $env, etc.
 		...this.getWorkflowDataProxy(index),
+		fetch,
 	};
 }
 
